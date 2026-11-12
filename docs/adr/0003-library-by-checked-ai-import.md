@@ -11,3 +11,5 @@ No public library of origami Models as ordered fold steps exists (research, Nov 
 ## Consequences
 
 The Library grows over time rather than all at once. A Model can be valid and still wrong, which is what the Mismatch report covers. Videos are out of scope for Import until diagram Import is working well.
+
+Pages from his books reach Import only through the parent's computer (an inbox folder), never from inside the app. Book import has to be uncomplicated and accurate or it goes: if fewer than 8 of 10 traditional Models from his books import cleanly and pass his check against the book, book import is cut entirely.
