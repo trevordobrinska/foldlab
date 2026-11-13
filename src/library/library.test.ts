@@ -98,23 +98,8 @@ function folded(paper: Paper, call: Parameters<typeof replay>[1]): Paper {
 
 // Every Fold of the cup as a Recording played back.
 //
-// KNOWN FAILURES, kept on record and not loosened here: Step 4, all four
-// Recordings. The mesh's own start and end layouts there have faces crossing
-// before anything moves; and the back flap's fold line has vertices shared by
-// layers up to five apart, at uneven heights, so that seating them on the
-// line the flap turns about runs the bars at them over 1% long, whichever
-// flap is folded first (the front flap's stay within it). Ticket 14's
-// diagnosis, fault B: `layeredLayout` in src/motion/mesh.ts. Waiting on
-// ticket 15. Steps 1 to 3 pass everything since ticket 14 fixed the plain
-// Fold's turn.
-const THROUGH = "waiting on ticket 15: the layered layout of Step 4 has faces crossing at the start and the end, before anything moves";
-const LONG = "waiting on ticket 15: the layered layout leaves the fold line of Step 4's back flap at uneven heights, so bars at it run over 1% long";
-const KNOWN: Record<string, Partial<Record<AcceptanceTest, string>>> = {
-  "Step 4, Fold 1": { crossing: THROUGH },
-  "Step 4, Fold 2": { crossing: THROUGH, stretch: LONG },
-  "Step 4, Fold 2 made first": { crossing: THROUGH, stretch: LONG },
-  "Step 4, Fold 1 made second": { crossing: THROUGH },
-};
+// No known failures: every Recording of the cup passes everything.
+const KNOWN: Record<string, Partial<Record<AcceptanceTest, string>>> = {};
 
 const cupFolds: { name: string; fold: RecordedCase }[] = [];
 {

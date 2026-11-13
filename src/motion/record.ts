@@ -23,7 +23,7 @@
 
 import { EPSILON } from "../engine/geometry";
 import type { Lift, Paper } from "../engine/paper";
-import { buildMesh, type Mesh } from "./mesh";
+import { buildMesh, placeOf, settleStack, type Mesh } from "./mesh";
 import { MIN_FRAMES, RECORDING_VERSION, roundCoordinate, type Recording } from "./recording";
 import { angleAt, initialState, relax, tuning } from "./solve";
 import { add, cross, dot, length, scale, sub, unit, type V3 } from "./vec3";
@@ -154,7 +154,11 @@ function plainFoldAxis(mesh: Mesh): Axis | undefined {
  * engine's finished layout has it. Meanwhile the paper that stays moves to
  * its finished heights, a steady share per snapshot, the line rising with
  * it; and the fold line's vertices ride on the line, but for the first and
- * last SEATING_FRAMES, where they leave and reach the layouts' heights. The
+ * last SEATING_FRAMES, where they leave and reach the layouts' heights. With
+ * them ride the vertices the layouts bundle with them at the same folded
+ * points (the edges and corners of the layers the crease wraps: ticket 15),
+ * and the rest of the paper that stays gives way to those as it does in a
+ * layout (`settleStack`), so its layers keep their order throughout. The
  * turn ends at the finished layout, so the `catchUp` snapshots have nothing
  * left to settle: the paper lies still through them, as the hand rests on
  * the finished Fold.
@@ -183,6 +187,19 @@ function turn(mesh: Mesh, axis: Axis, driven: number, catchUp: number): V3[][] {
     const c = Math.min(1, Math.max(0, t));
     return c * c * (3 - 2 * c);
   };
+  // With the fold line's vertices go the others lying at the same folded points: the edges and corners of the
+  // layers the crease wraps, which the layouts hold at the crease's height at either end.
+  const sameHeight = (a: number, b: number) => Math.abs(a - b) < EPSILON;
+  const seated = still.filter((v) =>
+    onLine.some(
+      (l) =>
+        placeOf(mesh.start[l]) === placeOf(mesh.start[v]) &&
+        (sameHeight(mesh.start[l][2], mesh.start[v][2]) || sameHeight(mesh.end[l][2], mesh.end[v][2])),
+    ),
+  );
+  // The rest of the paper that stays gives way to them, as it does in a layout.
+  const travels = mesh.start.map((_, v) => moving.includes(v));
+  const fixed = mesh.stack.held.map((held, v) => held || seated.includes(v));
   const frames: V3[][] = [];
   for (let k = 1; k <= driven; k++) {
     const w = k / driven;
@@ -191,9 +208,10 @@ function turn(mesh: Mesh, axis: Axis, driven: number, catchUp: number): V3[][] {
     // The fold line's vertices: off the line by their start heights at first, by their finished heights at last.
     const leaving = 1 - eased(k / SEATING_FRAMES);
     const arriving = eased((k - (driven - SEATING_FRAMES)) / SEATING_FRAMES);
-    for (const v of onLine) {
+    for (const v of seated) {
       out[v][2] = point[2] + w * shift + leaving * (mesh.start[v][2] - point[2]) + arriving * (mesh.end[v][2] - point[2] - shift);
     }
+    if (k < driven) settleStack(mesh, out, fixed, travels);
     for (const { v, foot, arm, quarter, short } of arms) {
       const q = add(foot, add(scale(arm, Math.cos(angle)), scale(quarter, sense * Math.sin(angle))));
       out[v] = [q[0], q[1], q[2] + w * (shift + short)];

@@ -6,13 +6,12 @@
 //    left where they lay, so the turned flap came down inside the stack it
 //    should land on, and its layers crossed at the fold line from just past
 //    upright. The tests below that pinned it now hold it fixed.
-// B. OPEN, ticket 15. The layered layout (mesh.ts, `layeredLayout`) puts a
-//    vertex at the mean height of the faces around it, which lets vertices at
-//    one folded point sit at different heights once a face there has been cut
-//    by a new crease: Step 4's start and end layouts have faces crossing
-//    before anything moves. Pinned here as expected failures, to be turned
-//    into plain tests by whoever fixes it (library.test.ts keeps the
-//    acceptance failures that follow from it on record).
+// B. FIXED under ticket 15. The layered layout (mesh.ts, `layeredLayout`)
+//    put a vertex at the mean height of the faces around it, which let
+//    vertices at one folded point sit at different heights once a face there
+//    had been cut by a new crease, or a crease wrapped other layers' edges:
+//    Step 4's start and end layouts had faces crossing before anything
+//    moved. The tests below that pinned it now hold it fixed.
 //
 // The report behind the ticket's numbers prints with:
 //
@@ -106,8 +105,8 @@ describe("ticket 14, fault A (fixed): a plain Fold of a stack lands the flap on 
   });
 });
 
-describe("ticket 14, fault B (ticket 15): Step 4's layouts have faces crossing before anything moves", () => {
-  it.fails.each(["S4F1", "S4F2", "S4F2first", "S4F1second"])("%s: no faces cross in the mesh's own start and end layouts (known failure: waiting on ticket 15)", (name) => {
+describe("ticket 14, fault B (fixed under ticket 15): nothing crosses in Step 4's layouts before anything moves", () => {
+  it.each(["S4F1", "S4F2", "S4F2first", "S4F1second"])("%s: no faces cross in the mesh's own start and end layouts", (name) => {
     const c = caseNamed(name);
     const mesh = buildMesh(c.before, c.after);
     expect([...crossings(mesh, mesh.start).keys()], "start").toEqual([]);

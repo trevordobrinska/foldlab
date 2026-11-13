@@ -70,6 +70,15 @@ export interface Mesh {
   rigid: boolean;
   /** The Paper's edges, for drawing. */
   edges: PaperEdge[];
+  /** What `settleStack` needs to keep the layers in order while a Fold is made. */
+  stack: {
+    /** 1 when toward him is +z, -1 when it is -z. */
+    facing: number;
+    /** Each face's layer before the Fold: the faces that lie still keep this order among themselves. */
+    layers: number[];
+    /** Vertices whose height the layers meeting there settle, at the start or at the end. */
+    held: boolean[];
+  };
 }
 
 /**
@@ -171,15 +180,16 @@ export function buildMesh(before: Paper, after: Paper, lift?: Lift): Mesh {
   const facing = Math.sign(determinant(after.view));
   const layersBefore = seenFaces(before).map((face) => face.layer);
   const layout = (angles: number[], layerOf: number[]) =>
-    layeredLayout(graph, after.rootFace, angles, parents, facesOf, layerOf, facing);
-  const lying = layout(startAngles, faceBefore.map((f) => layersBefore[f]));
+    layeredLayout(graph, after.rootFace, angles, parents, facesOf, onEdge.map((edges) => edges.size > 0), triangles, triangleFace, layerOf, facing);
+  const layersStart = faceBefore.map((f) => layersBefore[f]);
+  const { positions: lying, held: heldStart } = layout(startAngles, layersStart);
   const liftLine = lift ? lineInFoldedFrame(lift.line, before) : undefined;
   const stood = liftLine ? standing(lying, lift!, liftLine, facesOf, faceBefore, layersBefore, facing) : undefined;
   const start = stood ? stood.positions : lying;
   /** Is this Paper edge the lifted flap's hinge: lying on the lift's line? */
   const onLiftLine = (e: number) =>
     liftLine !== undefined && graph.edges_vertices[e].every((v) => Math.abs(liftLine.distance(lying[v])) < EPSILON);
-  const end = layout(graph.edges_foldAngle, seenFaces(after).map((face) => face.layer));
+  const { positions: end, held: heldEnd } = layout(graph.edges_foldAngle, seenFaces(after).map((face) => face.layer));
   const movingEdges = new Set(graph.edges_vertices.flatMap((_, e) => (startAngles[e] !== graph.edges_foldAngle[e] ? [e] : [])));
 
   // Hinges take their start and end angles from the layered Paper as it
@@ -239,7 +249,8 @@ export function buildMesh(before: Paper, after: Paper, lift?: Lift): Mesh {
     folded: Math.abs(startAngles[e]) === 180 || Math.abs(graph.edges_foldAngle[e]) === 180,
   }));
 
-  return { paperVertexCount: n, start, end, triangles, triangleFace, faceBefore, bars, hinges, pinned, rigid: lift !== undefined, edges };
+  const stack = { facing: facing || 1, layers: layersStart, held: heldStart.map((held, v) => held || heldEnd[v]) };
+  return { paperVertexCount: n, start, end, triangles, triangleFace, faceBefore, bars, hinges, pinned, rigid: lift !== undefined, edges, stack };
 }
 
 /** The mesh vertices along Paper edge `e` from u to v, in order along the flat paper. */
@@ -281,7 +292,27 @@ function onSegment(p: Point, q: Point, x: Point): boolean {
 /**
  * The Paper flat-folded with the given angles, lifted into 3D: each layer
  * LAYER_GAP from the next (toward him is +z when `facing` is 1), the stack
- * centred on z = 0, and a vertex shared by layers in between them.
+ * centred on z = 0. Also given: the vertices `held`, whose height is settled
+ * by the layers meeting there.
+ *
+ * A vertex inside a face lies at its face's layer. A vertex on a face's edge
+ * (`onBoundary`) is where layers meet, and a crease has no width: at one
+ * folded point, everything a crease wraps must come to the crease's own
+ * height, or the layers cut through each other there. So the edge vertices
+ * lying at one folded point are taken together. Each spans the layers of the
+ * faces around it (one layer, for a raw edge; the two a folded crease joins,
+ * and all those between). Spans that overlap are one bundle: a crease, the
+ * creases nested inside it, and the raw edges and corners lying in the fold.
+ * Every vertex of a bundle takes the bundle's middle height. Bundles at one
+ * point that do not overlap keep their own heights, one above the other.
+ *
+ * The height depends on which layers meet at the point and not on how many
+ * faces do, so cutting a face along a new crease (the mesh of the Fold about
+ * to be made) leaves the layout as it was.
+ *
+ * Away from the point each face slopes back to its own layer over its own
+ * triangles; `settleLayers` keeps those slopes gentle and out of each
+ * other's way.
  */
 function layeredLayout(
   graph: FoldGraph,
@@ -289,25 +320,232 @@ function layeredLayout(
   angles: number[],
   parents: number[][],
   facesOf: number[][],
+  onBoundary: boolean[],
+  triangles: [number, number, number][],
+  triangleFace: number[],
   layerOf: number[],
   facing: number,
-): V3[] {
+): { positions: V3[]; held: boolean[] } {
   const assignments = graph.edges_assignment.map((a, e) =>
     a === "B" ? "B" : angles[e] > 0 ? "V" : angles[e] < 0 ? "M" : "F",
   );
   const laid = { ...graph, edges_foldAngle: angles, edges_assignment: assignments };
   const folded = makeVerticesCoordsFlatFolded(laid, [rootFace]) as Point[];
-  const mean = layerOf.reduce((sum, layer) => sum + layer, 0) / layerOf.length;
-  const out: V3[] = [];
+  const xy: Point[] = [];
   parents.forEach((from, v) => {
-    const xy =
+    xy.push(
       from.length === 0
         ? folded[v]
-        : [from.reduce((s, p) => s + out[p][0], 0) / from.length, from.reduce((s, p) => s + out[p][1], 0) / from.length];
-    const layer = facesOf[v].reduce((sum, f) => sum + layerOf[f], 0) / facesOf[v].length;
-    out.push([xy[0], xy[1], facing * LAYER_GAP * (layer - mean)]);
+        : [from.reduce((s, p) => s + xy[p][0], 0) / from.length, from.reduce((s, p) => s + xy[p][1], 0) / from.length],
+    );
   });
-  return out;
+
+  // Each vertex's span of layers, and its height on its own: the middle of the span.
+  const span = facesOf.map((faces): [number, number] => {
+    const layers = faces.map((f) => layerOf[f]);
+    return [Math.min(...layers), Math.max(...layers)];
+  });
+  const layer = span.map(([low, high]) => (low + high) / 2);
+  const held = span.map(([low, high]) => high > low);
+
+  // The edge vertices at each folded point, bundled where their spans overlap.
+  const places = new Map<string, number[]>();
+  xy.forEach((p, v) => {
+    if (!onBoundary[v]) return;
+    const key = placeOf(p);
+    places.set(key, [...(places.get(key) ?? []), v]);
+  });
+  for (const together of places.values()) {
+    const byLow = [...together].sort((a, b) => span[a][0] - span[b][0]);
+    let bundle: number[] = [];
+    let [low, high] = [0, -Infinity];
+    const settle = () => {
+      if (high > low) bundle.forEach((v) => ((layer[v] = (low + high) / 2), (held[v] = true)));
+    };
+    for (const v of byLow) {
+      if (span[v][0] > high) {
+        settle();
+        bundle = [];
+        [low, high] = span[v];
+      }
+      bundle.push(v);
+      high = Math.max(high, span[v][1]);
+    }
+    settle();
+  }
+
+  settleLayers(xy, layer, held, triangles, triangleFace, layerOf);
+
+  const mean = layerOf.reduce((sum, l) => sum + l, 0) / layerOf.length;
+  return { positions: xy.map((p, v) => [p[0], p[1], facing * LAYER_GAP * (layer[v] - mean)]), held };
+}
+
+/** Folded points nearer than this are one place (the Paper is about one unit across). */
+const SAME_PLACE = 1e-6;
+
+/** A name for the place a folded point lies at: the same for every point within SAME_PLACE or so. */
+export function placeOf(p: ArrayLike<number>): string {
+  return `${Math.round(p[0] / SAME_PLACE)} ${Math.round(p[1] / SAME_PLACE)}`;
+}
+
+/**
+ * The most layers a face may climb or drop over one row of its triangles, to
+ * a vertex held away from its own layer. A steeper slope stretches the bars
+ * along it (by half the slope squared: at 3.5 layers over the cup's shorter
+ * bars, about 0.5%); what is over is passed on to the next row.
+ */
+const STEEPEST = 3.5;
+
+/**
+ * The least room, in layers, a face is given over the face beneath it where
+ * it has had to give way. Surfaces left exactly touching along a ridge read
+ * as cutting through each other once a Recording's heights are rounded.
+ */
+const CLEARANCE = 0.02;
+
+/**
+ * The part of the stack that lies still while a Fold is made, kept in order
+ * with some of its vertices moved: `positions` (changed in place) has the
+ * `fixed` vertices where the Fold's motion puts them, and the others of the
+ * still faces (those with no vertex in `moving`) give way as in a layout:
+ * no slope too steep, no layer through another.
+ */
+export function settleStack(mesh: Mesh, positions: V3[], fixed: boolean[], moving: boolean[]): void {
+  const { facing, layers } = mesh.stack;
+  const still = layers.map((_, f) => mesh.triangles.every((triangle, t) => mesh.triangleFace[t] !== f || triangle.every((v) => !moving[v])));
+  const triangles = mesh.triangles.filter((_, t) => still[mesh.triangleFace[t]]);
+  const triangleFace = mesh.triangleFace.filter((f) => still[f]);
+  const height = positions.map((p) => (facing * p[2]) / LAYER_GAP);
+  const before = [...height];
+  settleLayers(positions, height, fixed, triangles, triangleFace, layers);
+  height.forEach((h, v) => {
+    if (h !== before[v]) positions[v][2] = facing * LAYER_GAP * h;
+  });
+}
+
+/**
+ * Makes the faces' slopes gentle and keeps every layer on its own side of
+ * the layers it overlaps: `height` (per vertex, in layers) is changed in
+ * place, at the vertices not `held`. `rank` orders the faces: a higher rank
+ * lies above wherever two overlap.
+ *
+ * First, a vertex next to a held one more than STEEPEST away comes that much
+ * nearer to it. Then, two faces' surfaces being flat over each triangle, one
+ * lies above the other everywhere exactly when it does at each vertex of
+ * either that lies over the other, and wherever an edge of one crosses an
+ * edge of the other. Where it does not, the upper face rises there by what
+ * is missing (its vertices there that are not held); or, where it is held,
+ * the lower face sinks.
+ */
+function settleLayers(
+  xy: ArrayLike<number>[],
+  height: number[],
+  held: boolean[],
+  triangles: [number, number, number][],
+  triangleFace: number[],
+  rank: number[],
+): void {
+  // Gentle slopes: toward the held neighbour that is furthest out of reach.
+  const pulls = new Map<number, number>();
+  for (const triangle of triangles) {
+    for (const u of triangle) {
+      if (held[u]) continue;
+      for (const v of triangle) {
+        if (!held[v]) continue;
+        const drop = height[v] - height[u];
+        const over = Math.sign(drop) * Math.max(0, Math.abs(drop) - STEEPEST);
+        if (Math.abs(over) > Math.abs(pulls.get(u) ?? 0)) pulls.set(u, over);
+      }
+    }
+  }
+  for (const [u, over] of pulls) height[u] += over;
+
+  const faces = rank.map((_, f) => {
+    const own = triangles.filter((_, t) => triangleFace[t] === f);
+    const edges = new Map<string, [number, number]>();
+    for (const [a, b, c] of own) {
+      for (const [u, v] of [[a, b], [b, c], [c, a]]) edges.set(u < v ? `${u} ${v}` : `${v} ${u}`, [u, v]);
+    }
+    return { triangles: own, edges: [...edges.values()], vertices: [...new Set(own.flat())] };
+  });
+  /** A point of a face's surface: the vertices it hangs from and their shares. */
+  type Hold = [vertex: number, share: number][];
+  const at = (hold: Hold) => hold.reduce((sum, [v, share]) => sum + share * height[v], 0);
+  const EDGE = 1e-9;
+  /** Where vertex `u` lies in a triangle, if it does. */
+  const within = (u: number, [a, b, c]: [number, number, number]): Hold | undefined => {
+    const [p, A, B, C] = [xy[u], xy[a], xy[b], xy[c]];
+    const area = (B[0] - A[0]) * (C[1] - A[1]) - (B[1] - A[1]) * (C[0] - A[0]);
+    if (Math.abs(area) < 1e-14) return undefined;
+    const wb = ((p[0] - A[0]) * (C[1] - A[1]) - (p[1] - A[1]) * (C[0] - A[0])) / area;
+    const wc = ((B[0] - A[0]) * (p[1] - A[1]) - (B[1] - A[1]) * (p[0] - A[0])) / area;
+    const wa = 1 - wb - wc;
+    if (wa < -EDGE || wb < -EDGE || wc < -EDGE) return undefined;
+    return [[a, wa], [b, wb], [c, wc]];
+  };
+  /** Where two edges cross, if they do, short of their ends: as a point of each. */
+  const crossing = ([a, b]: [number, number], [c, d]: [number, number]): [Hold, Hold] | undefined => {
+    const [A, B, C, D] = [xy[a], xy[b], xy[c], xy[d]];
+    const r = [B[0] - A[0], B[1] - A[1]];
+    const s = [D[0] - C[0], D[1] - C[1]];
+    const denominator = r[0] * s[1] - r[1] * s[0];
+    if (Math.abs(denominator) < 1e-14) return undefined;
+    const t = ((C[0] - A[0]) * s[1] - (C[1] - A[1]) * s[0]) / denominator;
+    const u = ((C[0] - A[0]) * r[1] - (C[1] - A[1]) * r[0]) / denominator;
+    if (t <= EDGE || t >= 1 - EDGE || u <= EDGE || u >= 1 - EDGE) return undefined;
+    return [[[a, 1 - t], [b, t]], [[c, 1 - u], [d, u]]];
+  };
+  /** Move the free vertices of `hold` so that its point moves by `by`; false when none is free. */
+  const give = (hold: Hold, by: number): boolean => {
+    const free = hold.filter(([v, share]) => !held[v] && share > 1e-6);
+    const share = free.reduce((sum, [, s]) => sum + s, 0);
+    if (share < 1e-6) return false;
+    for (const [v] of free) height[v] += by / share;
+    return true;
+  };
+
+  const TOUCHING = 1e-9;
+  /** How free a point of a face is to move: the share of it hanging from vertices that are not held. */
+  const freedom = (hold: Hold) => hold.reduce((sum, [v, share]) => sum + (held[v] ? 0 : share), 0);
+  /** Every point at which a lower face and a higher one must be in order: the same point as a hold of each. */
+  const meetings = (f: number, g: number): [lower: Hold, upper: Hold][] => {
+    const [low, high] = [faces[f], faces[g]];
+    const out: [Hold, Hold][] = [];
+    for (const u of low.vertices) for (const t of high.triangles) {
+      const over = within(u, t);
+      if (over) out.push([[[u, 1]], over]);
+    }
+    for (const u of high.vertices) for (const t of low.triangles) {
+      const under = within(u, t);
+      if (under) out.push([under, [[u, 1]]]);
+    }
+    for (const e of low.edges) for (const d of high.edges) {
+      const cross = crossing(e, d);
+      if (cross) out.push(cross);
+    }
+    return out;
+  };
+  const byRank = rank.map((_, f) => f).sort((a, b) => rank[a] - rank[b]);
+  // From the bottom up, each face rises clear of every face beneath it: those are done with, and rising cannot undo it.
+  for (const g of byRank) {
+    for (const f of byRank) {
+      if (rank[f] >= rank[g]) continue;
+      for (const [lower, upper] of meetings(f, g)) {
+        const missing = at(lower) - at(upper) + CLEARANCE * freedom(upper);
+        if (missing > TOUCHING) give(upper, missing);
+      }
+    }
+  }
+  // Where a face could not rise (held there), from the top down the face beneath sinks clear of it instead.
+  for (const f of [...byRank].reverse()) {
+    for (const g of byRank) {
+      if (rank[f] >= rank[g]) continue;
+      for (const [lower, upper] of meetings(f, g)) {
+        const missing = at(lower) - at(upper) + CLEARANCE * freedom(lower) * (1 - freedom(upper));
+        if (missing > TOUCHING) give(lower, -missing);
+      }
+    }
+  }
 }
 
 interface FoldedLine {
