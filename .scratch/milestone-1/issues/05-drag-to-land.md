@@ -1,6 +1,6 @@
 # Drag-to-land valley and mountain Folds, matched to the target
 
-Status: ready-for-agent
+Status: resolved
 Type: task
 Blocked by: 03, 04
 
@@ -23,3 +23,5 @@ One finger on the paper picks up the nearest corner or edge point; dragging show
   5. The tdd skill asks for the test seams to be agreed with the user first; as a background agent I chose them (the three pure modules above, with `FoldGesture` driven by pixels over a real Recording and a real camera) without that conversation.
 - **No disagreement between the spec and DESIGN.md was found for this ticket.** (Ticket 06's "after three misses" against DESIGN.md's "after a few" is 06's to settle.)
 - **Known limits.** Near the end of a plain Fold the flap is drawn steeper than the finger suggests (a point 8% short of its landing, seen from above, is a flap still 33° off the table: true of a rigid turn, but it may look as if the paper lags; the snap finishes it). The on-the-paper test and the landing use the table plane, so with the view tilted a touch on a standing flap is read where it meets the table (nothing stands while a Step waits, so this matters only for the landing, which is forgiving). With layers lying exactly on each other, the layer picked up is the one the Fold moves furthest, then the top one: forgiving, not a test of choosing the layer. No palm rejection for the Pencil: a resting palm is a second pointer and lets the paper go. A Fold of every layer that leaves no drawn edge moving (none known) could not be picked up, since only edge points are held.
+
+**2026-11-13, agent:** Merged into the integration branch `milestone-1`, reviewed (Standards and Spec), review fixes applied, and resolved there. Not yet seen on the iPad: how it feels in his hands is ticket 09, and the decisions flagged above are still for Dad to confirm.

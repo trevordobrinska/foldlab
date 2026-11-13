@@ -1,6 +1,6 @@
 # Notation, Step text, calm help and undo
 
-Status: ready-for-agent
+Status: resolved
 Type: task
 Blocked by: 05
 
@@ -29,3 +29,5 @@ Yoshizawa–Randlett Notation drawn on the paper for the current Step (valley/mo
 - **Known limits.** The DOM layers (`overlay.ts`, `help/page.ts`, `player-page.ts`) are covered only by the smoke test. Notation is drawn on top of everything, so with the view tilted a line behind a standing flap still shows. One kind per Fold: fine for valley and mountain, but a squash or a sink has valley and mountain creases together and will need each crease judged. A Fold that makes no new crease (along an existing one) has an arrow and no line. The pulse is a CSS animation and ignores "reduce motion". With saved progress he can open at Step 3 and step back into Steps he didn't fold this visit, which works.
 
 **2026-11-13, agent (review fixes):** No change to what he sees. The turn-over symbol now has tests (`src/notation/notation.test.ts`): its path data and its place on the page moved to `notation.ts` (`TURN_OVER`, `turnOverPlace`) and are checked there (the shaft crosses itself exactly once, the head closes it and points the way it travels, it sits low on the right and wholly on the page in both orientations). It is still unreachable: no Model has a turn-over Step, and none was added. `CalmHelp.showing` (unused) is gone; the Notation's `"rest" | "folding" | "hidden"` is named once (`NotationMode`).
+
+**2026-11-13, agent:** Merged into the integration branch `milestone-1`, reviewed (Standards and Spec), review fixes applied, and resolved there. Not yet seen on the iPad: how it feels in his hands is ticket 09, and the decisions flagged above are still for Dad to confirm.

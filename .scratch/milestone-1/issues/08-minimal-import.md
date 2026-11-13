@@ -1,6 +1,6 @@
 # Minimal Import: a cup diagram becomes a Model
 
-Status: ready-for-agent
+Status: resolved
 Type: task
 Blocked by: 03, 07
 
@@ -37,3 +37,5 @@ A Node script on Dad's computer: takes a Source from `import/inbox/` (gitignored
 - **For Dad: a failed re-import keeps the earlier Model.** If `cup.json` is already in the Library (the stand-in, or an earlier import) and importing `cup` again fails, the earlier `cup.json` stays and a Failed import is recorded for the same id. GLOSSARY says a Failed import "never appears in the Library"; here the Model in the Library is the earlier good one, not the failed try, and deleting a good Model seemed worse. The Failed record now carries `earlierModelKept: true` and the output says the Library still has the Model from before. Say if a failed re-import should remove it instead.
 - **Cleanup, no behaviour change:** prompt and schema wording follows GLOSSARY (Paper, Step text; no "sheet" or "instruction"); the supported Fold types are one list (`FOLD_CALL_TYPES` in `model.ts`) read by the format, its checks and the answer format; `scripts/typescript.mjs` holds the Vite loader the three scripts shared.
 - **Checks.** `npm run typecheck`, `npm test` (22 files: 324 passed, 15 expected failures, 2 skipped) and `npm run build` pass. `npm run import` with an empty inbox and no key prints "Nothing to import" and exits 0; `npm run library` rebuilds `cup.json` byte for byte.
+
+**2026-11-13, agent:** Merged into the integration branch `milestone-1`, reviewed (Standards and Spec), review fixes applied, and resolved there. No real Import has been run: the call to the Claude API has only been compiled, never made, and the cup in the Library is still the stand-in. The first real run is Dad's, as part of ticket 09 (and see ticket 14 for the Recordings it will produce).

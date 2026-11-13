@@ -1,6 +1,6 @@
 # Model file and player, with saved progress
 
-Status: ready-for-agent
+Status: resolved
 Type: task
 Blocked by: 03
 
@@ -29,3 +29,5 @@ The Model file: name, Source, Paper (shape, two sides), Steps of Folds as engine
   8. The tdd skill asks for the test seams to be agreed first; as a background agent I chose them: `parseModel` / `parseRecipe`, `buildModel`, the player's functions, `loadProgress` / `saveProgress` over a stand-in `localStorage`, `modelPapers`, and the committed cup file. `player-page.ts` (DOM) is covered only by the smoke test.
 
 **2026-11-13, agent (review fixes):** Names and dead code only; nothing he can see changes. In `src/model/player.ts`, `made(model, place, fold)` is now `afterFold` (so `made` is only the `Place` field), `undone` is deleted (nothing used it; `undoing` is what the page calls) and `steppedBack` takes just the Place. `PlayerPage.offers()` is now `foldsToMake()` and returns the papers Notation is drawn for; `folds()` is documented as the gesture's version of it (empty while the paper moves, and remembered for `show`/`settle`/`folded`). `PlayerPage.place()`, `PlayerPageOptions.foldMs`, `ModelPapers.centre`, `pointerOf`'s `tableHeight` and `FoldGesture.down`'s return value were unused outside tests and are gone. The page's first rest is muted by an explicit `opening` flag.
+
+**2026-11-13, agent:** Merged into the integration branch `milestone-1`, reviewed (Standards and Spec), review fixes applied, and resolved there. Not yet seen on the iPad: how it feels in his hands is ticket 09, and the decisions flagged above are still for Dad to confirm.
