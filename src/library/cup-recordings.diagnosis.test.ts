@@ -1,19 +1,20 @@
-// Ticket 14's reproduction: why the cup's Recordings of Steps 2 to 4 fail
-// ticket 10's acceptance tests (library.test.ts keeps those failures on
-// record). Two faults, each pinned here as an expected failure to be turned
-// into a plain test by whoever fixes it:
+// Ticket 14's reproduction: why the cup's Recordings of Steps 2 to 4 failed
+// ticket 10's acceptance tests. Two faults were found:
 //
-// A. The plain Fold's turn (record.ts, `turn`) is about a line at the flap's
-//    own mean height with the crease's vertices left where they lay, so the
-//    turned flap comes down inside the stack it should land on, and its
-//    layers cross at the fold line from just past upright.
-// B. The layered layout (mesh.ts, `layeredLayout`) puts a vertex at the mean
-//    height of the faces around it, which lets vertices at one folded point
-//    sit at different heights once a face there has been cut by a new crease:
-//    Step 4's start and end layouts have faces crossing before anything moves.
+// A. FIXED under ticket 14. The plain Fold's turn (record.ts, `turn`) was
+//    about a line at the flap's own mean height with the crease's vertices
+//    left where they lay, so the turned flap came down inside the stack it
+//    should land on, and its layers crossed at the fold line from just past
+//    upright. The tests below that pinned it now hold it fixed.
+// B. OPEN, ticket 15. The layered layout (mesh.ts, `layeredLayout`) puts a
+//    vertex at the mean height of the faces around it, which lets vertices at
+//    one folded point sit at different heights once a face there has been cut
+//    by a new crease: Step 4's start and end layouts have faces crossing
+//    before anything moves. Pinned here as expected failures, to be turned
+//    into plain tests by whoever fixes it (library.test.ts keeps the
+//    acceptance failures that follow from it on record).
 //
-// The full report behind the ticket's numbers, and the prototype of the
-// candidate fix for A, print with:
+// The report behind the ticket's numbers prints with:
 //
 //   T14_REPORT=1 npx vitest run src/library/cup-recordings.diagnosis.test.ts --disable-console-intercept
 //
@@ -29,11 +30,11 @@ import { corners, layerOrderHolds, toV3s, trianglesCross } from "../motion/accep
 import { buildMesh, LAYER_GAP, type Mesh } from "../motion/mesh";
 import { playbackOf } from "../motion/playback";
 import { FRAMES, record } from "../motion/record";
-import { add, cross, dot, length, scale, sub, unit, type V3 } from "../motion/vec3";
+import { length, sub, type V3 } from "../motion/vec3";
 import { cupRecipe } from "./recipes";
 
-/** The last snapshot of the turn itself; the catch-up snapshots follow (record.ts: 100 driven, 4 catch-up). */
-const TURNED = FRAMES - 1 - 4;
+/** A snapshot a few degrees short of flat (before ticket 14's fix, the last of the turn, with the flap lying inside the stack). */
+const NEARLY_DOWN = FRAMES - 1 - 4;
 
 function folded(paper: Paper, call: FoldCall): Paper {
   const result = replay(paper, call);
@@ -80,22 +81,22 @@ const snapshots = (c: { before: Paper; after: Paper }): V3[][] => {
   return Array.from({ length: FRAMES }, (_, k) => toV3s(play.frame(k)));
 };
 
-describe("ticket 14, fault A: the plain Fold's turn lands the flap inside the stack", () => {
-  // Step 2 at the end of the turn: the flap's layers at heights -0.5 and +0.5 gaps, the very heights of
-  // the two layers they should be lying on; the catch-up then drags them through to +0.5 and +1.5.
-  it.fails.each(["S2F1", "S3F1"])("%s: when the turn is done the flap lies on the paper it landed on, in the finished layer order (known failure: ticket 14, fault A)", (name) => {
+describe("ticket 14, fault A (fixed): a plain Fold of a stack lands the flap on the stack, not inside it", () => {
+  // Before the fix, Step 2 at this snapshot had the flap's layers at -0.5 and +0.5 gaps, the very heights
+  // of the two layers they should be lying on, and the last snapshots dragged them through to +0.5 and +1.5.
+  it.each(["S2F1", "S3F1"])("%s: nearly down, the flap is already over the paper it lands on, in the finished layer order", (name) => {
     const c = caseNamed(name);
     const mesh = buildMesh(c.before, c.after);
-    expect(layerOrderHolds(mesh, snapshots(c)[TURNED], c.after, (f) => f)).toBe(true);
+    expect(layerOrderHolds(mesh, snapshots(c)[NEARLY_DOWN], c.after, (f) => f)).toBe(true);
   });
 
-  it.fails.each(["S2F1", "S3F1"])("%s: no faces cross at any snapshot (known failure: ticket 14, fault A)", (name) => {
+  it.each(["S2F1", "S3F1"])("%s: no faces cross at any snapshot", (name) => {
     const c = caseNamed(name);
     const mesh = buildMesh(c.before, c.after);
     snapshots(c).forEach((positions, k) => expect([...crossings(mesh, positions).keys()], `snapshot ${k}`).toEqual([]));
   });
 
-  it("the layouts at either end of Steps 2 and 3 are sound: the fault is in the motion between them", () => {
+  it("the layouts at either end of Steps 2 and 3 are sound", () => {
     for (const name of ["S2F1", "S3F1"]) {
       const c = caseNamed(name);
       const mesh = buildMesh(c.before, c.after);
@@ -105,8 +106,8 @@ describe("ticket 14, fault A: the plain Fold's turn lands the flap inside the st
   });
 });
 
-describe("ticket 14, fault B: Step 4's layouts have faces crossing before anything moves", () => {
-  it.fails.each(["S4F1", "S4F2", "S4F2first", "S4F1second"])("%s: no faces cross in the mesh's own start and end layouts (known failure: ticket 14, fault B)", (name) => {
+describe("ticket 14, fault B (ticket 15): Step 4's layouts have faces crossing before anything moves", () => {
+  it.fails.each(["S4F1", "S4F2", "S4F2first", "S4F1second"])("%s: no faces cross in the mesh's own start and end layouts (known failure: waiting on ticket 15)", (name) => {
     const c = caseNamed(name);
     const mesh = buildMesh(c.before, c.after);
     expect([...crossings(mesh, mesh.start).keys()], "start").toEqual([]);
@@ -122,7 +123,7 @@ describe("ticket 14, fault B: Step 4's layouts have faces crossing before anythi
 });
 
 // ---------------------------------------------------------------------------
-// The report and the prototype, printed on request.
+// The report, printed on request.
 
 const f4 = (n: number) => n.toFixed(4);
 /** A height in layer gaps. */
@@ -168,54 +169,6 @@ function summarise(mesh: Mesh, frames: V3[][], label: string) {
   for (const [key, ks] of spans) console.log(`     ${key}: ${ranges(ks)}`);
 }
 
-/**
- * PROTOTYPE of the candidate fix for fault A, not the fix: the same rigid
- * turn, but about the plane the flap is mirrored in between the start and end
- * layouts (so it comes down where the end layout has it), with the vertices
- * that do not travel (the crease's among them) brought to their end heights
- * over the first `early` snapshots, and the stack's shift fed in throughout.
- */
-function prototypeTurn(mesh: Mesh, early: number): V3[][] {
-  const S = mesh.start;
-  const E = mesh.end;
-  const creaseVertices = [...new Set(mesh.hinges.filter((h) => h.kind === "crease" && h.driven).flatMap((h) => h.edge))];
-  const a = S[creaseVertices[0]];
-  const flatDistance = (v: number) => Math.hypot(S[v][0] - a[0], S[v][1] - a[1]);
-  const far = creaseVertices.reduce((best, v) => (flatDistance(v) > flatDistance(best) ? v : best));
-  const u = unit([S[far][0] - a[0], S[far][1] - a[1], 0]);
-  const moving = S.flatMap((p, v) => (Math.hypot(p[0] - E[v][0], p[1] - E[v][1]) > 1e-9 ? [v] : []));
-  const still = S.flatMap((_, v) => (moving.includes(v) ? [] : [v]));
-  const mean = (vs: number[], f: (v: number) => number) => vs.reduce((sum, v) => sum + f(v), 0) / vs.length;
-  // The axis ends at the crease's finished height; the flap is mirrored in it, and `shift` is how far the whole stack moves.
-  const axisHeight = mean(moving, (v) => S[v][2] + E[v][2]) - mean(creaseVertices, (v) => E[v][2]);
-  const shift = mean(moving, (v) => E[v][2] + S[v][2]) - 2 * axisHeight;
-  const side = Math.sign(mean(moving, (v) => E[v][2]) - mean(still, (v) => E[v][2])) || 1;
-  const point: V3 = [a[0], a[1], axisHeight];
-  const arms = moving.map((v) => {
-    const r = sub(S[v], point);
-    const along = scale(u, dot(r, u));
-    const arm = sub(r, along);
-    return { v, foot: add(point, along), arm, quarter: cross(u, arm) };
-  });
-  const rise = arms.reduce((sum, { arm }) => sum + cross(u, [arm[0], arm[1], 0])[2], 0);
-  const sense = Math.sign(rise) === side ? 1 : -1;
-  const frames: V3[][] = [];
-  for (let k = 0; k <= TURNED; k++) {
-    const w = k / TURNED;
-    const t = Math.min(1, k / early);
-    const eased = t * t * (3 - 2 * t);
-    const angle = Math.PI * w;
-    const out = S.map((p, v) => [p[0], p[1], p[2] + w * shift + eased * (E[v][2] - p[2] - shift)] as V3);
-    for (const { v, foot, arm, quarter } of arms) {
-      const q = add(foot, add(scale(arm, Math.cos(angle)), scale(quarter, sense * Math.sin(angle))));
-      const mirrored = add(foot, scale(arm, -1));
-      out[v] = [q[0], q[1], q[2] + w * shift + w * (E[v][2] - mirrored[2] - shift)];
-    }
-    frames.push(out);
-  }
-  return frames;
-}
-
 const only = process.env.T14_ONLY?.split(",");
 
 describe.runIf(process.env.T14_REPORT)("ticket 14: the report", { timeout: 120000 }, () => {
@@ -236,22 +189,16 @@ describe.runIf(process.env.T14_REPORT)("ticket 14: the report", { timeout: 12000
       const faces = [...new Set(mesh.triangles.flatMap((t, i) => (t.includes(v) ? [mesh.triangleFace[i]] : [])))];
       console.log(`  vertex ${v} at (${f4(mesh.start[v][0])}, ${f4(mesh.start[v][1])}) height ${height(mesh.start[v])} -> ${height(mesh.end[v])}, faces ${faces}`);
     }
-    const moving = mesh.start.flatMap((p, v) => (Math.hypot(p[0] - mesh.end[v][0], p[1] - mesh.end[v][1]) > 1e-9 ? [v] : []));
-    const axis = moving.reduce((sum, v) => sum + mesh.start[v][2], 0) / moving.length;
     const creaseVertices = [...new Set(mesh.hinges.filter((h) => h.kind === "crease" && h.driven).flatMap((h) => h.edge))];
-    console.log(`  the turn's axis height (record.ts: mean of the ${moving.length} moving vertices) ${gaps(facing * axis)}; this Fold's crease vertices: ${creaseVertices.map((v) => `${v} at ${height(mesh.start[v])} -> ${height(mesh.end[v])}`).join(", ")}`);
+    console.log(`  this Fold's crease vertices: ${creaseVertices.map((v) => `${v} at ${height(mesh.start[v])} -> ${height(mesh.end[v])}`).join(", ")}`);
 
     const frames = snapshots(c);
-    const stillTravel = Math.max(...frames.slice(0, TURNED + 1).flatMap((frame) => frame.map((p, v) => (moving.includes(v) ? 0 : length(sub(p, mesh.start[v]))))));
-    console.log(`  the plain Fold's turn was taken: nothing but the flap moves over snapshots 0-${TURNED} (${stillTravel.toExponential(1)})`);
     for (const k of [0, 50, 90, 96, 98, 100, 101, 102, 103, 104]) {
       console.log(`  snapshot ${k}: face centre heights ${after.map((_, f) => `${f}:${height(frames[k][n + f])}`).join(" ")}`);
     }
     summarise(mesh, frames, "the Recording");
     summarise(mesh, [mesh.start], "start layout alone");
     summarise(mesh, [mesh.end], "end layout alone");
-    summarise(mesh, prototypeTurn(mesh, 10), "prototype turn, crease vertices at their end heights by snapshot 10");
-    summarise(mesh, prototypeTurn(mesh, TURNED), "prototype turn, crease vertices fed in over the whole turn");
     if (process.env.T14_DETAIL) {
       for (const [label, positions] of [["start", mesh.start], ["end", mesh.end]] as const) {
         for (const [key, list] of crossings(mesh, positions)) {

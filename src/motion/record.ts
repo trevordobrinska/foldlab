@@ -74,11 +74,31 @@ export function record(before: Paper, after: Paper, lift?: Lift): Recording {
   };
 }
 
-/** A line in space: a point on it and its unit direction. */
+/** The line a plain Fold's flap turns about: a point on it and its unit direction. */
 interface Axis {
   point: V3;
   direction: V3;
+  /**
+   * The height the paper that stays gains from the start layout to the end
+   * layout: the stack is centred anew once the flap has changed sides. The
+   * line rises with it.
+   */
+  shift: number;
+  /** The mesh vertices along the fold line: on the creases this Fold makes. */
+  onLine: number[];
 }
+
+/**
+ * Snapshots at the start of a plain Fold over which the fold line's vertices
+ * are brought onto the line the flap turns about, and at the end over which
+ * they take up their finished heights. In a stack each layer's fold-line
+ * vertices lie at that layer's own height, off the line; left there while the
+ * flap turns, the bars from them into the flap change length (by their
+ * distance from the line, at most when the flap stands upright) and the
+ * flap's layers cross along the fold line (ticket 14). So they are off the
+ * line only while the flap is nearly flat, at either end.
+ */
+const SEATING_FRAMES = 10;
 
 /**
  * The line a plain Fold turns about, if this Fold is one: a valley or
@@ -88,6 +108,11 @@ interface Axis {
  * its angle, and every moving vertex lands at its mirror image across that
  * line. An inside reverse (its spine turns inside out), a squash (its flap
  * is lifted) and a sink (creases invert) are not, and go to the solver.
+ *
+ * The line's height is where the flap is mirrored between the two layouts,
+ * not the flap's own: a flap of a stack turns about the surface it lands on,
+ * so that it comes down on top of the stack (or beneath it) with its layers
+ * in the finished order.
  */
 function plainFoldAxis(mesh: Mesh): Axis | undefined {
   if (mesh.rigid) return undefined;
@@ -103,8 +128,9 @@ function plainFoldAxis(mesh: Mesh): Axis | undefined {
   const offLine = (p: V3) => (p[0] - a[0]) * direction[1] - (p[1] - a[1]) * direction[0];
   if (driven.some((h) => h.edge.some((v) => Math.abs(offLine(mesh.start[v])) > EPSILON))) return undefined;
 
-  // The moving vertices are mirrored across the line, and the line itself is the flap's own height.
-  const moving = mesh.start.flatMap((p, v) => (Math.hypot(p[0] - mesh.end[v][0], p[1] - mesh.end[v][1]) > EPSILON ? [v] : []));
+  // The moving vertices are mirrored across the line.
+  const travels = mesh.start.map((p, v) => Math.hypot(p[0] - mesh.end[v][0], p[1] - mesh.end[v][1]) > EPSILON);
+  const moving = mesh.start.flatMap((_, v) => (travels[v] ? [v] : []));
   if (!moving.length) return undefined;
   for (const v of moving) {
     const s = mesh.start[v];
@@ -112,19 +138,29 @@ function plainFoldAxis(mesh: Mesh): Axis | undefined {
     const mirrored = [s[0] - 2 * d * direction[1], s[1] + 2 * d * direction[0]];
     if (Math.hypot(mirrored[0] - mesh.end[v][0], mirrored[1] - mesh.end[v][1]) > 1e-6) return undefined;
   }
-  const height = moving.reduce((sum, v) => sum + mesh.start[v][2], 0) / moving.length;
-  return { point: [a[0], a[1], height], direction };
+  // A flap mirrored in a line at height h, the paper then moved by `shift`, ends at 2h - start + shift.
+  const mean = (vs: number[], of: (v: number) => number) => vs.reduce((sum, v) => sum + of(v), 0) / (vs.length || 1);
+  const onLine = [...new Set(driven.flatMap((h) => h.edge))];
+  const stays = mesh.start.flatMap((_, v) => (travels[v] || onLine.includes(v) ? [] : [v]));
+  const shift = mean(stays, (v) => mesh.end[v][2] - mesh.start[v][2]);
+  const height = (mean(moving, (v) => mesh.start[v][2] + mesh.end[v][2]) - shift) / 2;
+  return { point: [a[0], a[1], height], direction, shift, onLine };
 }
 
 /**
- * The exact motion of a plain Fold: the flap turned rigidly about its line
- * through half a turn over the `driven` snapshots (its corner at a steady
- * speed), then over the `catchUp` snapshots settled into the engine's
- * finished layout, which differs only by the layers' gaps (the flap now lies
- * on top of, or beneath, the paper it landed on). Nothing else moves.
+ * The exact motion of a plain Fold: over the `driven` snapshots the flap is
+ * turned rigidly about its line through half a turn (its corner at a steady
+ * speed), coming down on the paper it lands on (or beneath it) where the
+ * engine's finished layout has it. Meanwhile the paper that stays moves to
+ * its finished heights, a steady share per snapshot, the line rising with
+ * it; and the fold line's vertices ride on the line, but for the first and
+ * last SEATING_FRAMES, where they leave and reach the layouts' heights. The
+ * turn ends at the finished layout, so the `catchUp` snapshots have nothing
+ * left to settle: the paper lies still through them, as the hand rests on
+ * the finished Fold.
  */
 function turn(mesh: Mesh, axis: Axis, driven: number, catchUp: number): V3[][] {
-  const { point, direction: u } = axis;
+  const { point, direction: u, shift, onLine } = axis;
   const moving = mesh.start.flatMap((p, v) => (Math.hypot(p[0] - mesh.end[v][0], p[1] - mesh.end[v][1]) > EPSILON ? [v] : []));
   const still = mesh.start.flatMap((_, v) => (moving.includes(v) ? [] : [v]));
   // The flap turns toward the side it lands on: over the paper (a valley) or beneath it (a mountain).
@@ -135,24 +171,36 @@ function turn(mesh: Mesh, axis: Axis, driven: number, catchUp: number): V3[][] {
     const r = sub(mesh.start[v], point);
     const along = scale(u, dot(r, u));
     const arm = sub(r, along);
-    return { v, foot: add(point, along), arm, quarter: cross(u, arm) };
+    // Mirrored in the line and moved with the paper, the vertex is this far in height from the finished layout
+    // (nothing, but for the layouts' tilts); it is fed in with the shift.
+    const short = mesh.end[v][2] - (point[2] - arm[2] + shift);
+    return { v, foot: add(point, along), arm, quarter: cross(u, arm), short };
   });
-  const rise = arms.reduce((sum, { quarter }) => sum + quarter[2], 0);
+  // Which way the quarter turn lifts the flap is read from where it lies on the flat, not from its height off the line.
+  const rise = arms.reduce((sum, { arm }) => sum + cross(u, [arm[0], arm[1], 0])[2], 0);
   const sense = Math.sign(rise) === side ? 1 : -1;
-  const at = (angle: number): V3[] => {
-    const out = mesh.start.map((p) => [...p] as V3);
-    for (const { v, foot, arm, quarter } of arms) {
-      out[v] = add(foot, add(scale(arm, Math.cos(angle)), scale(quarter, sense * Math.sin(angle))));
-    }
-    return out;
+  const eased = (t: number) => {
+    const c = Math.min(1, Math.max(0, t));
+    return c * c * (3 - 2 * c);
   };
   const frames: V3[][] = [];
-  for (let k = 1; k <= driven; k++) frames.push(at((Math.PI * k) / driven));
-  const turned = frames[frames.length - 1];
-  for (let j = 1; j <= catchUp; j++) {
-    const t = j / catchUp;
-    frames.push(turned.map((p, v) => add(scale(p, 1 - t), scale(mesh.end[v], t))));
+  for (let k = 1; k <= driven; k++) {
+    const w = k / driven;
+    const angle = Math.PI * w;
+    const out = mesh.start.map((p, v): V3 => [p[0], p[1], p[2] + w * (mesh.end[v][2] - p[2])]);
+    // The fold line's vertices: off the line by their start heights at first, by their finished heights at last.
+    const leaving = 1 - eased(k / SEATING_FRAMES);
+    const arriving = eased((k - (driven - SEATING_FRAMES)) / SEATING_FRAMES);
+    for (const v of onLine) {
+      out[v][2] = point[2] + w * shift + leaving * (mesh.start[v][2] - point[2]) + arriving * (mesh.end[v][2] - point[2] - shift);
+    }
+    for (const { v, foot, arm, quarter, short } of arms) {
+      const q = add(foot, add(scale(arm, Math.cos(angle)), scale(quarter, sense * Math.sin(angle))));
+      out[v] = [q[0], q[1], q[2] + w * (shift + short)];
+    }
+    frames.push(out);
   }
+  for (let j = 0; j < catchUp; j++) frames.push(mesh.end);
   return frames;
 }
 

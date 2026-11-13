@@ -68,3 +68,48 @@ The 2.3% bars in Step 4 are fault A's point 2, made worse by fault B: the crease
 2. Fix the layout (`layeredLayout` in `mesh.ts`): make it hold for a crease wrapped round other layers' edges and for a face cut by the new crease, for instance by giving every vertex at one folded point on a folded crease one height. Cost: medium to large, a day or two at a guess, and not yet designed: two crude versions tried in scratch work, not committed (pinch every coincident vertex; pinch only those on folded creases), each cleared some of Step 4's layouts and broke others (the first pinched the tips of the front and back flaps together through six layers), and with fix 1 on top only one of the four Step 4 Recordings came out fully clean (front flap made second: no crossings, bars 0.53%). Risk: medium. Every Recording's start and end come from this layout and the hinges' rest angles are measured from it (`mesh.ts:203-204`), so the inside reverse, squash and sink Recordings (tickets 10 to 13) all move and need their acceptance runs again.
 
 *Recommendation.* Do fix 1 now under this ticket: it is small, the prototype shows it works for Steps 2 and 3, and it removes what Dad sees in all three Steps. Then look again on the iPad. Split fix 2 into its own ticket: it is what stands between Step 4 and the acceptance tests (the eight registered Step 4 failures stay until it is done) and what the numbers say causes the colour patches lying flat, but it needs a design decision about how a zero-width crease wraps a stack, and it touches every Recording.
+
+**2026-11-13, agent, fix 1:** The turn is fixed (fault A), on branch `ticket-14-fix-turn`. Steps 1 to 3 now pass all of ticket 10's acceptance tests. Step 4 still fails the crossing test in all four Recordings, and the stretch test in the two back-flap Recordings, because of the layout (fault B, ticket 15). Nothing in `mesh.ts` was touched and no limit was changed.
+
+*What changed*, all in `turn` and `plainFoldAxis` in `src/motion/record.ts`:
+
+- The line the flap turns about is now at the height where the flap is mirrored between the start and end layouts, not at the flap's own height. So the flap comes down on top of the stack (or beneath it, for a mountain) at its finished height, with its layers in the finished order.
+- The paper that stays moves to its finished heights a steady share per snapshot through the turn, and the line rises with it.
+- The fold line's own vertices ride on that line while the flap turns. They leave their starting heights over the first 10 snapshots and take up their finished heights over the last 10 of the turn (`SEATING_FRAMES`), so they are off the line only while the flap is nearly flat.
+- The turn still takes snapshots 1 to 100 and ends exactly at the engine's layout. Snapshots 101 to 104 now hold that layout still: the catch-up has nothing left to do for a plain Fold. I kept the turn on the same 100 snapshots so the flap's path under his finger is the same as before.
+
+This differs from the prototype in the diagnosis in one way. The prototype moved everything that does not travel to its finished height in the first 10 snapshots. In Step 4's back flap that made the whole stack dip about 1.8 gaps and come slowly back, because the layout there has the fold line at uneven heights. Only the fold line's vertices are seated now, and the dip is gone.
+
+*Numbers, before and after* (ticket 10's acceptance run in `src/library/library.test.ts`, which samples at twice the snapshot rate; limits: bars and areas 1%, largest move 0.015, earlier creases 10 degrees):
+
+| Recording | Bars before | Bars after | Areas before | Areas after | Faces crossing before | Faces crossing after |
+| --- | --- | --- | --- | --- | --- | --- |
+| Step 1 | 0.02% | 0.02% | 0.01% | 0.04% | none | none |
+| Step 2 | 0.89% | 0.23% | 0.48% | 0.16% | snapshots 51 to 103 | none |
+| Step 3 | 0.89% | 0.41% | 0.48% | 0.29% | snapshots 51 to 103 | none |
+| Step 4 front flap | 1.36% | 0.32% | 0.59% | 0.59% | 0 to 104 | 0 to 104 (layout) |
+| Step 4 back flap | 2.30% | 1.17% | 0.91% | 0.59% | 0 to 104 | 0 to 104 (layout) |
+| Step 4 back flap made first | 2.30% | 1.17% | 0.91% | 0.45% | 0 to 104 | 0 to 104 (layout) |
+| Step 4 front flap made second | 1.36% | 0.52% | 0.59% | 0.59% | 0 to 104 | 0 to 104 (layout) |
+
+The largest move between samples is unchanged in every Recording (0.0111, 0.0085, 0.0085, then 0.0046 for all of Step 4). Earlier creases hold within 0.0 degrees in Steps 2 and 3 as before; in Step 4 they went from 0.8 and 0.2 degrees to 1.1 and 1.0. Spring-back passes for all seven. Start and finish pass for all seven.
+
+Where the flap is when nearly down, in layer gaps: in Step 2 at snapshot 100 the flap's layers were at -0.5 and +0.5, inside the two layers beneath; they are now at +0.5 and +1.5 with the paper beneath at -0.5 and -1.5. Step 4's front flap at snapshot 100 was at -1.28, under all four corner layers; it is now at +3.00, on top of them (they are at -1.00 to +2.00).
+
+*Expected failures removed* (they pass now), in `src/library/library.test.ts`: the crossing test for Step 2 and for Step 3, and the stretch test for Step 4 Fold 1 and for Step 4 Fold 1 made second. In `src/library/cup-recordings.diagnosis.test.ts`: the four fault A tests for Steps 2 and 3 (flap in the finished layer order when nearly down; no faces crossing at any snapshot) are plain tests now.
+
+*Expected failures that remain*, each now saying it is waiting on ticket 15: in `library.test.ts` the crossing test for all four Step 4 Recordings, and the stretch test for Step 4 Fold 2 and Step 4 Fold 2 made first. In the diagnosis test, the four tests that Step 4's start and end layouts have no faces crossing.
+
+*Why Step 4 still fails.* The crossings at snapshot 0 and at the end are in the layouts themselves, as diagnosed. During the turn the front flap also still crosses the two corner flaps next to the fold line from snapshot 53 on, because the finished layout puts the fold line under the corner flaps' raw edges. The back flap's 1.17% is now at snapshot 10, on a bar at vertex 9: that vertex is shared by layers 0 and 5, and seating it on the line tilts the bar further. Both go with the layout.
+
+*Other files that changed.* `src/library/cup.json` was rebuilt with `npm run library`. `src/recordings/cup-1.json` (Step 1 as the page's fixture) was re-recorded with `npm run record -- cup-1`, because its freshness test compares it with what the recorder writes today: Step 1's heights now move steadily through the turn instead of in the last four snapshots (a change of half a gap at most; the flap's path on the flat is the same). The inside reverse, squash and closed sink Recordings were not re-recorded and their freshness tests still pass (re-recording gives the same file within the rounding); they do not use this path.
+
+*Not verified.* Nothing was looked at on a screen: all of the above is from the tests and the numbers. `npm run typecheck`, `npm test` (334 passed, 15 expected failures, 9 skipped) and `npm run build` pass.
+
+*For Dad on the iPad:*
+
+- Steps 2 and 3, the end of the Fold: the bottom of the flap near the fold line should no longer break down, and the flap should lie on top as it lands.
+- Steps 2 and 3, the start of the Fold: over the first tenth of the drag the fold line's vertices move up or down onto the line, by a gap and a half at most in Step 2 and two and a half in Step 3 (0.01 of the paper). Look along the fold line, with the camera tilted, for a twitch or a kink as the flap first lifts. If there is one, `SEATING_FRAMES` is the number to raise (in the diagnosis prototype, which seated more than the fold line, 20 still passed for Step 3 at 0.75% bars; not re-run on this version).
+- Step 4, either flap: the flap should now land on top of the two corners (or behind the cup) without pushing through at the end. Small faults right along the fold line, and the colour patches when lying flat, are expected to remain until ticket 15.
+- Step 1: should look as it did.
+- The last twenty-fifth of each plain Fold's drag now holds the finished paper still, where before the layers settled by half a gap. Say if the end of the drag feels dead.
