@@ -1,13 +1,5 @@
 /* Throwaway prototype page. Builds on ../src/style.css for the tokens and
-   the house button. */
-
-:root {
-  --side-a: #e9a65e;
-  --side-a-light: #f3be84;
-  --side-a-dark: #c98541;
-  --side-b: #fbf7ee;
-  --shadow: rgba(43, 37, 64, 0.18);
-}
+   the house button. The paper's own colours live in view.ts (three.js). */
 
 /* Fill the screen, never scroll or zoom while he is folding. */
 body.proto {
@@ -70,23 +62,28 @@ body.proto {
 }
 
 #stage {
+  position: relative;
   flex: 1;
   min-height: 0;
   width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   touch-action: none;
 }
 
-#paper {
-  height: 100%;
+/* The 3D paper fills the stage; the target overlay sits on it in the same
+   square frame (viewBox 0..100, "meet"), so projected points line up. */
+#paper,
+#target {
+  position: absolute;
+  inset: 0;
   width: 100%;
-  max-height: 100%;
-  max-width: 100%;
-  aspect-ratio: 1;
-  touch-action: none;
+  height: 100%;
   display: block;
+  touch-action: none;
+}
+
+#target {
+  pointer-events: none;
+  overflow: visible;
 }
 
 #prompt {
@@ -105,59 +102,12 @@ body.proto {
   opacity: 1;
 }
 
-/* Paper */
-#paper polygon {
-  stroke: var(--ink);
-  stroke-width: 1.2;
-  stroke-linejoin: round;
-}
-
-#paper .side-a {
-  fill: var(--side-a);
-}
-
-#paper .side-a-light {
-  fill: var(--side-a-light);
-}
-
-#paper .side-a-dark {
-  fill: var(--side-a-dark);
-}
-
-#paper .side-b {
-  fill: var(--side-b);
-}
-
-#paper .shadow {
-  fill: var(--shadow);
-  stroke: none;
-}
-
-#paper line {
-  stroke: var(--ink);
-  stroke-width: 1.2;
-  stroke-linecap: round;
-}
-
-/* Notation: a valley crease is dashed; an x-ray line is dotted. */
-#paper .crease {
-  stroke-dasharray: 3 2.5;
-}
-
-#paper .xray {
-  stroke-dasharray: 1 2;
-  stroke-width: 1;
-}
-
 /* The target: a hollow push arrow and a ring on the point to touch. */
-#target-layer {
+#target {
   transition: opacity 150ms ease-out;
-  pointer-events: none;
-  transform-box: fill-box;
-  transform-origin: center;
 }
 
-#paper .ring {
+#target .ring {
   fill: none;
   stroke: var(--ink);
   stroke-width: 1;
@@ -166,7 +116,7 @@ body.proto {
 }
 
 /* Closed sink: the ring fills in, once, when the press-and-hold is done. */
-#target-layer.held .ring {
+#target.held .ring {
   fill: var(--ink);
   fill-opacity: 0.18;
   stroke-dasharray: none;
@@ -174,15 +124,16 @@ body.proto {
   transition: fill-opacity 150ms ease-out;
 }
 
-#paper .arrow {
+#target .arrow {
   fill: var(--card);
   stroke: var(--ink);
   stroke-width: 1.4;
 }
 
 /* After a miss: two gentle pulses, then still. Never loops. */
-#target-layer.pulse {
+#target.pulse {
   animation: pulse 700ms ease-in-out 2;
+  transform-origin: center;
 }
 
 @keyframes pulse {

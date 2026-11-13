@@ -23,10 +23,10 @@
     <main id="proto">
       <nav id="tabs" aria-label="Fold type"></nav>
       <div id="stage">
-        <svg id="paper" viewBox="-8 -8 116 116" aria-label="Paper">
-          <g id="paper-layer"></g>
-          <g id="target-layer"></g>
-        </svg>
+        <!-- The paper is drawn in 3D on the canvas; the target Notation is
+             an SVG over it in the same square frame (frame.ts). -->
+        <canvas id="paper" aria-label="Paper"></canvas>
+        <svg id="target" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" aria-hidden="true"></svg>
       </div>
       <p id="prompt"></p>
       <button id="again" type="button">Again</button>

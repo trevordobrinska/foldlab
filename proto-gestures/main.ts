@@ -1,5 +1,5 @@
 // Throwaway prototype (ticket 02): the squash, inside reverse and sink
-// gestures on canned paper. Not the engine; delete this folder (and its
+// gestures on canned 3D paper. Not the engine; delete this folder (and its
 // entries in vite.config.ts and tsconfig.json) once the real Folds exist.
 //
 // The proposed gestures, each a single-finger (or Pencil) push that copies
@@ -23,21 +23,30 @@
 // The paper follows the finger. On release: a match settles into the
 // finished Fold; anything else springs back calmly and the target (the push
 // arrow and the ring on the point) pulses twice, then stops.
+//
+// The paper is a three.js scene (view.ts) drawn from canned 3D geometry
+// (geometry.ts). The finger, the recognizer and the target overlay share
+// one frame: the 0..100 square of the canvas (frame.ts), into which each
+// Fold's grab point and push axis are projected through its camera.
 
 import "../src/style.css";
 import "./style.css";
 import { FOLDS, FOLD_ORDER, type FoldType } from "./folds";
-import { scene, target, type Shape } from "./paper";
+import { pixelToFrame } from "./frame";
+import { target, type Shape } from "./notation";
 import { heldStill, judge, progressOf, tookHold, type PathPoint } from "./recognize";
+import { PaperView } from "./view";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 const tabs = document.querySelector<HTMLElement>("#tabs")!;
-const svg = document.querySelector<SVGSVGElement>("#paper")!;
-const paperLayer = document.querySelector<SVGGElement>("#paper-layer")!;
-const targetLayer = document.querySelector<SVGGElement>("#target-layer")!;
+const stage = document.querySelector<HTMLElement>("#stage")!;
+const canvas = document.querySelector<HTMLCanvasElement>("#paper")!;
+const targetLayer = document.querySelector<SVGSVGElement>("#target")!;
 const prompt = document.querySelector<HTMLElement>("#prompt")!;
 const again = document.querySelector<HTMLButtonElement>("#again")!;
+
+const view = new PaperView(canvas);
 
 let current: FoldType = "squash";
 let progress = 0;
@@ -77,24 +86,6 @@ function el(shape: Shape): SVGElement {
       e.setAttribute("class", shape.cls);
       return e;
     }
-    case "line": {
-      const e = document.createElementNS(SVG_NS, "line");
-      e.setAttribute("x1", String(shape.from.x));
-      e.setAttribute("y1", String(shape.from.y));
-      e.setAttribute("x2", String(shape.to.x));
-      e.setAttribute("y2", String(shape.to.y));
-      e.setAttribute("class", shape.cls);
-      return e;
-    }
-    case "ellipse": {
-      const e = document.createElementNS(SVG_NS, "ellipse");
-      e.setAttribute("cx", String(shape.c.x));
-      e.setAttribute("cy", String(shape.c.y));
-      e.setAttribute("rx", String(shape.rx));
-      e.setAttribute("ry", String(shape.ry));
-      e.setAttribute("class", shape.cls);
-      return e;
-    }
     case "circle": {
       const e = document.createElementNS(SVG_NS, "circle");
       e.setAttribute("cx", String(shape.c.x));
@@ -107,14 +98,24 @@ function el(shape: Shape): SVGElement {
 }
 
 function draw() {
-  paperLayer.replaceChildren(...scene(current, progress).map(el));
+  view.show(current, progress);
   // The target is shown while the paper is untouched, hidden once it moves.
   targetLayer.style.opacity = progress === 0 && !done ? "1" : "0";
 }
 
 function drawTarget() {
-  targetLayer.replaceChildren(...target(current).map(el));
+  targetLayer.replaceChildren(...target(FOLDS[current].push).map(el));
 }
+
+// The canvas follows its container (landscape or portrait); the frame is
+// its centred square, so the target overlay (an SVG with the same square
+// viewBox, "meet") lines up with the projected paper at any size.
+function fit() {
+  const rect = stage.getBoundingClientRect();
+  view.resize(rect.width, rect.height);
+  draw();
+}
+new ResizeObserver(fit).observe(stage);
 
 // --- Animation (never loops) -----------------------------------------------
 
@@ -148,29 +149,31 @@ targetLayer.addEventListener("animationend", () => targetLayer.classList.remove(
 
 // --- Gesture ---------------------------------------------------------------
 
-function paperPoint(e: PointerEvent): PathPoint {
-  const ctm = svg.getScreenCTM();
-  const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(ctm ? ctm.inverse() : undefined);
+function framePoint(e: PointerEvent): PathPoint {
+  const rect = canvas.getBoundingClientRect();
+  const pt = pixelToFrame(e.clientX - rect.left, e.clientY - rect.top, rect.width, rect.height);
   return { x: pt.x, y: pt.y, t: performance.now() - startedAt };
 }
 
-svg.addEventListener("pointerdown", (e) => {
+stage.addEventListener("pointerdown", (e) => {
   if (done || pointerId !== null || animation !== null) return;
   e.preventDefault();
   pointerId = e.pointerId;
-  svg.setPointerCapture(e.pointerId);
+  stage.setPointerCapture(e.pointerId);
   startedAt = performance.now();
-  path = [paperPoint(e)];
+  path = [framePoint(e)];
   progress = 0;
   draw();
   startHold();
 });
 
-svg.addEventListener("pointermove", (e) => {
+stage.addEventListener("pointermove", (e) => {
   if (e.pointerId !== pointerId) return;
   e.preventDefault();
-  path.push(paperPoint(e));
-  progress = progressOf(FOLDS[current].push, path);
+  path.push(framePoint(e));
+  const next = progressOf(FOLDS[current].push, path);
+  if (next === progress) return; // render on demand only
+  progress = next;
   draw();
 });
 
@@ -178,7 +181,7 @@ function release(e: PointerEvent) {
   if (e.pointerId !== pointerId) return;
   pointerId = null;
   endHold();
-  path.push(paperPoint(e));
+  path.push(framePoint(e));
   const verdict = judge(FOLDS[current].push, path);
   if (verdict === "match") {
     animateTo(1, 350, () => {
@@ -190,8 +193,8 @@ function release(e: PointerEvent) {
     animateTo(0, 450, pulseTarget);
   }
 }
-svg.addEventListener("pointerup", release);
-svg.addEventListener("pointercancel", release);
+stage.addEventListener("pointerup", release);
+stage.addEventListener("pointercancel", release);
 
 // --- Choosing a Fold and starting again -------------------------------------
 
@@ -230,6 +233,7 @@ again.addEventListener("click", () => select(current));
 // drawing can be checked without a finger.
 const params = new URLSearchParams(location.search);
 const wanted = params.get("fold") as FoldType | null;
+fit();
 select(wanted && FOLD_ORDER.includes(wanted) ? wanted : current);
 const p = Number(params.get("p"));
 if (p > 0) {
