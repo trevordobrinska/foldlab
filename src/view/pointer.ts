@@ -24,6 +24,33 @@ export interface Pointer {
   screen(point: V3): Pixel;
 }
 
+/**
+ * The pointer for a paper shown turned half over about `axis` (a level line
+ * through the paper's centre; Flip, camera.ts `turnedOver`): `table` gives
+ * the point of the paper as it lies in its Recording that is now under the
+ * pixel, and `screen` the pixel such a point is now drawn at. So a finger
+ * and the Notation meet the paper where he sees it, from the other side.
+ */
+export function turnedPointer(pointer: Pointer, axis: V3): Pointer {
+  const length = Math.hypot(axis.x, axis.z) || 1;
+  const ax = axis.x / length;
+  const az = axis.z / length;
+  // Half a turn about a level line: along the line stays, across it and height change sign. Its own undoing.
+  const turned = (p: V3): V3 => {
+    const along = 2 * (p.x * ax + p.z * az);
+    return { x: along * ax - p.x, y: -p.y, z: along * az - p.z };
+  };
+  return {
+    table(px, py) {
+      const seen = pointer.table(px, py);
+      if (!seen) return undefined;
+      const { x, z } = turned({ x: seen.x, y: 0, z: seen.z });
+      return { x, z };
+    },
+    screen: (point) => pointer.screen(turned(point)),
+  };
+}
+
 /** The pointer for a camera on a canvas of `width` x `height` CSS pixels (pixels measured from its top left). */
 export function pointerOf(view: View, width: number, height: number): Pointer {
   const w = Math.max(1, width);

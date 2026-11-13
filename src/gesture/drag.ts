@@ -57,8 +57,12 @@ export function travel(hold: Hold): number {
  * of is the one that carries the touched point furthest (so with symmetric
  * Folds, reaching for a flap chooses its Fold). Undefined on the background.
  * Leaves each paper's buffers at an arbitrary progress: show it again after.
+ *
+ * Where Folds and layers carry the point equally far, he gets the one
+ * nearest him: the first Fold and the top layer, or with `fromBehind` (he
+ * is looking at the paper's other side) the last Fold and the bottom layer.
  */
-export function holdOf(folds: FoldingPaper[], touch: TablePoint): Hold | undefined {
+export function holdOf(folds: FoldingPaper[], touch: TablePoint, fromBehind = false): Hold | undefined {
   let best: Hold | undefined;
   let bestTravel = -1;
   folds.forEach((paper, fold) => {
@@ -74,8 +78,8 @@ export function holdOf(folds: FoldingPaper[], touch: TablePoint): Hold | undefin
         });
       }
       const hold: Hold = { fold, pick: picked, path };
-      // Strictly further: of equals, the first Fold and the top layer keep it.
-      if (travel(hold) > bestTravel + 1e-6) {
+      // From in front strictly further, so of equals the first keeps it; from behind the last takes it.
+      if (travel(hold) > bestTravel + (fromBehind ? -1e-6 : 1e-6)) {
         best = hold;
         bestTravel = travel(hold);
       }
@@ -129,6 +133,8 @@ export interface FoldGestureHost {
   folds(): FoldingPaper[];
   /** The camera as it is now, on the canvas. */
   pointer(): Pointer;
+  /** True while he looks at the paper's other side (Flip): of flaps lying on each other he then gets the bottom one. */
+  fromBehind?(): boolean;
   /** Draw Fold `fold` at `progress`. */
   show(fold: number, progress: number): void;
   /** Move the paper calmly from `from` to `to` (1 is the exact Fold, 0 is springing back), then call `done`. */
@@ -167,7 +173,7 @@ export class FoldGesture {
     const pointer = this.host.pointer();
     const touch = pointer.table(px, py);
     if (!touch) return;
-    const hold = holdOf(this.host.folds(), touch);
+    const hold = holdOf(this.host.folds(), touch, this.host.fromBehind?.() ?? false);
     if (!hold) return;
     this.hold = hold;
     this.progress = 0;

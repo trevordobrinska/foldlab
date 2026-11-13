@@ -26,6 +26,8 @@ export interface HelpPageOptions {
   steps: StepHost;
   /** The camera as it is now, on the canvas. */
   pointer(): Pointer;
+  /** True while he looks at the paper's other side (Flip): a valley is then drawn as a mountain and a mountain as a valley, as he sees them. */
+  fromBehind?(): boolean;
   /** True while his finger has the paper or the paper is settling (FoldGesture.busy). */
   busy(): boolean;
 }
@@ -34,7 +36,7 @@ export interface HelpPage {
   /** He made a Fold that is not the Step's, and the paper has sprung back. For FoldGestureHost.missed. */
   missed(): void;
   /**
-   * The Folds to make have changed (he made one, or went back): new Notation,
+   * The Folds to make have changed (he made one, went back, or flipped the paper): new Notation,
    * and the misses start again. Working the Notation out moves the papers'
    * buffers, so draw the page afterwards.
    */
@@ -46,7 +48,7 @@ export interface HelpPage {
   draw(mode: NotationMode): void;
 }
 
-export function helpPage({ steps, pointer, busy }: HelpPageOptions): HelpPage {
+export function helpPage({ steps, pointer, busy, fromBehind }: HelpPageOptions): HelpPage {
   const overlay = new NotationOverlay(document.querySelector<SVGSVGElement>("#notation")!);
   const showMeButton = document.querySelector<HTMLButtonElement>("#show-me")!;
 
@@ -73,7 +75,8 @@ export function helpPage({ steps, pointer, busy }: HelpPageOptions): HelpPage {
         const notation = notations.get(paper);
         if (notation) found.push(notation);
       }
-      overlay.set(withoutRepeats(found), steps.turnOver?.() ?? false);
+      const seen = fromBehind?.() ? found.map((n): FoldNotation => ({ ...n, kind: n.kind === "valley" ? "mountain" : "valley" })) : found;
+      overlay.set(withoutRepeats(seen), steps.turnOver?.() ?? false);
     },
     draw: (mode) => overlay.draw(pointer(), mode),
   };
