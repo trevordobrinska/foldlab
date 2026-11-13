@@ -1,9 +1,10 @@
 // Throwaway prototype (ticket 02): the squash, inside reverse and sink
-// gestures on canned paper. Not the engine; delete this folder (and its line
-// in vite.config.ts) once the real Folds exist.
+// gestures on canned paper. Not the engine; delete this folder (and its
+// entries in vite.config.ts and tsconfig.json) once the real Folds exist.
 //
 // The proposed gestures, each a single-finger (or Pencil) push that copies
-// the real hand motion:
+// the real hand motion. Squash and closed sink push the same way, so the
+// sink starts with a press-and-hold, the way a finger presses a point in:
 //
 //   Squash          Touch the top of the standing flap and press it straight
 //                   down. The flap opens symmetrically as it goes and lies
@@ -14,10 +15,10 @@
 //                   swings through the layers and comes out reversed. (Real
 //                   hands: part the layers and push the point through.)
 //
-//   Sink            Touch the closed point and push it down into the model.
-//                   It flattens to the pre-crease, then inverts inside, where
-//                   it shows as an x-ray line. (Real hands: open the base a
-//                   little and press the point in.)
+//   Closed sink     Press and hold the closed point until its ring fills
+//                   in, then push it down into the model. It flattens to the
+//                   pre-crease, then inverts inside, where it shows as an
+//                   x-ray line. (Real hands: press the point in.)
 //
 // The paper follows the finger. On release: a match settles into the
 // finished Fold; anything else springs back calmly and the target (the push
@@ -27,7 +28,7 @@ import "../src/style.css";
 import "./style.css";
 import { FOLDS, FOLD_ORDER, type FoldType } from "./folds";
 import { scene, target, type Shape } from "./paper";
-import { judge, progressOf, type PathPoint } from "./recognize";
+import { heldStill, judge, progressOf, tookHold, type PathPoint } from "./recognize";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -45,6 +46,26 @@ let path: PathPoint[] = [];
 let pointerId: number | null = null;
 let startedAt = 0;
 let animation: number | null = null;
+let holdTimer: number | undefined;
+
+/** Fills the ring when a Fold's press-and-hold is done, if the finger is
+ *  still on the point. Squash and inside reverse have no hold. */
+function startHold() {
+  const spec = FOLDS[current].push;
+  if (!spec.holdMs || !tookHold(spec, path)) return;
+  holdTimer = window.setTimeout(() => {
+    const last = path[path.length - 1];
+    const now = { ...last, t: performance.now() - startedAt };
+    if (pointerId !== null && heldStill(spec, [...path, now])) {
+      targetLayer.classList.add("held");
+    }
+  }, spec.holdMs);
+}
+
+function endHold() {
+  window.clearTimeout(holdTimer);
+  targetLayer.classList.remove("held");
+}
 
 // --- Drawing ---------------------------------------------------------------
 
@@ -142,6 +163,7 @@ svg.addEventListener("pointerdown", (e) => {
   path = [paperPoint(e)];
   progress = 0;
   draw();
+  startHold();
 });
 
 svg.addEventListener("pointermove", (e) => {
@@ -155,6 +177,7 @@ svg.addEventListener("pointermove", (e) => {
 function release(e: PointerEvent) {
   if (e.pointerId !== pointerId) return;
   pointerId = null;
+  endHold();
   path.push(paperPoint(e));
   const verdict = judge(FOLDS[current].push, path);
   if (verdict === "match") {
@@ -176,6 +199,7 @@ function select(type: FoldType) {
   if (animation !== null) cancelAnimationFrame(animation);
   animation = null;
   pointerId = null;
+  endHold();
   current = type;
   progress = 0;
   done = false;

@@ -39,12 +39,15 @@ export const FOLDS: Record<FoldType, FoldGeometry> = {
   },
   sink: {
     type: "sink",
-    name: "Sink",
-    prompt: "Push the point down inside the model.",
+    // A closed sink (GLOSSARY.md): the point is pushed in without opening
+    // the model. Same direction as the squash, so the hold sets it apart.
+    name: "Closed sink",
+    prompt: "Press and hold the point, then push it down inside.",
     push: {
       grab: { x: 50, y: 18, radius: 14 },
       axis: { x: 0, y: 1 },
       travel: 36,
+      holdMs: 400,
     },
   },
 };

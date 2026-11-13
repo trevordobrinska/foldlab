@@ -16,10 +16,20 @@ function drag(
   return path;
 }
 
-/** A drag from the grab zone along the Fold's own axis, `fraction` of travel. */
+/** Rests the finger on `at` for `ms` (a press-and-hold), then continues with
+ *  `then`, whose times are shifted to follow the hold. */
+function holdThen(at: { x: number; y: number }, ms: number, then: PathPoint[]): PathPoint[] {
+  const rest: PathPoint[] = [];
+  for (let t = 0; t < ms; t += 50) rest.push({ x: at.x, y: at.y, t });
+  return [...rest, ...then.map((p) => ({ ...p, t: p.t + ms }))];
+}
+
+/** A drag from the grab zone along the Fold's own axis, `fraction` of travel,
+ *  after the hold the Fold asks for (if any). */
 function pushAlong(spec: PushSpec, fraction: number, steps = 10): PathPoint[] {
   const { grab, axis, travel } = spec;
-  return drag(grab, { x: axis.x * travel * fraction, y: axis.y * travel * fraction }, steps);
+  const push = drag(grab, { x: axis.x * travel * fraction, y: axis.y * travel * fraction }, steps);
+  return spec.holdMs ? holdThen(grab, spec.holdMs, push) : push;
 }
 
 /** A vector across the axis (perpendicular), scaled by `k`. */
@@ -30,7 +40,7 @@ function across(spec: PushSpec, k: number) {
 const cases: [string, FoldGeometry][] = [
   ["squash: press the standing flap down flat", FOLDS.squash],
   ["inside reverse: push the point in between the layers", FOLDS.insideReverse],
-  ["sink: push the point down inside the model", FOLDS.sink],
+  ["closed sink: press and hold the point, then push it in", FOLDS.sink],
 ];
 
 describe.each(cases)("%s", (_name, fold) => {
@@ -45,7 +55,9 @@ describe.each(cases)("%s", (_name, fold) => {
   });
 
   it("still matches a wobbly push that stops three-quarters of the way", () => {
+    const holdMs = spec.holdMs ?? 0;
     const wobbled = pushAlong(spec, 0.75, 12).map((p, i) => {
+      if (p.t < holdMs) return p; // a held finger rests; the push wobbles
       const side = across(spec, i % 2 ? 8 : -8);
       return { ...p, x: p.x + side.x, y: p.y + side.y };
     });
@@ -83,7 +95,38 @@ describe.each(cases)("%s", (_name, fold) => {
     const turn = out[out.length - 1];
     const { axis, travel } = spec;
     const back = drag(turn, { x: -axis.x * travel * 0.6, y: -axis.y * travel * 0.6 }, 6);
-    const path = [...out, ...back.slice(1).map((p, i) => ({ ...p, t: 200 + i * 16 }))];
+    const path = [...out, ...back.slice(1).map((p, i) => ({ ...p, t: turn.t + (i + 1) * 16 }))];
     expect(progressOf(spec, path)).toBeCloseTo(0.2, 5);
+  });
+});
+
+describe("closed sink is told apart from squash by the press-and-hold", () => {
+  const spec = FOLDS.sink.push;
+  const holdMs = spec.holdMs!;
+  const push = drag(spec.grab, { x: spec.axis.x * spec.travel, y: spec.axis.y * spec.travel });
+
+  it("asks for a hold that squash does not", () => {
+    expect(holdMs).toBeGreaterThan(0);
+    expect(FOLDS.squash.push.holdMs).toBeUndefined();
+  });
+
+  it("springs back when the point is pushed straight away without a hold", () => {
+    expect(judge(spec, push)).toBe("spring-back");
+  });
+
+  it("keeps the paper still until the hold is done", () => {
+    const resting = holdThen(spec.grab, holdMs * 0.5, []);
+    expect(progressOf(spec, resting)).toBe(0);
+  });
+
+  it("springs back when the finger slides off the point during the hold", () => {
+    const slid = holdThen(spec.grab, holdMs, push).map((p) =>
+      p.t > 0 && p.t < holdMs ? { ...p, x: p.x + spec.grab.radius } : p,
+    );
+    expect(judge(spec, slid)).toBe("spring-back");
+  });
+
+  it("matches the same push once the point has been held", () => {
+    expect(judge(spec, holdThen(spec.grab, holdMs, push))).toBe("match");
   });
 });

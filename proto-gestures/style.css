@@ -165,6 +165,15 @@ body.proto {
   opacity: 0.45;
 }
 
+/* Closed sink: the ring fills in, once, when the press-and-hold is done. */
+#target-layer.held .ring {
+  fill: var(--ink);
+  fill-opacity: 0.18;
+  stroke-dasharray: none;
+  opacity: 0.8;
+  transition: fill-opacity 150ms ease-out;
+}
+
 #paper .arrow {
   fill: var(--card);
   stroke: var(--ink);
