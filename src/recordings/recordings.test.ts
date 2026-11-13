@@ -78,6 +78,11 @@ describe("the page", () => {
     expect(names).toContain("gesture/pick.ts");
   });
 
+  it("draws Notation and helps calmly", () => {
+    expect(names).toContain("notation/notation.ts");
+    expect(names).toContain("help/calm.ts");
+  });
+
   it("carries no physics: solve.ts, hinge.ts, mesh.ts, motion.ts and record.ts are never imported", () => {
     for (const physics of ["motion/solve.ts", "motion/hinge.ts", "motion/mesh.ts", "motion/motion.ts", "motion/record.ts"]) {
       expect(names, `${physics} reached from main.ts`).not.toContain(physics);

@@ -1,9 +1,11 @@
 // FoldLab: the paper on his iPad. For now one recorded Step is drawn as real
 // layered paper; one finger on the paper folds it (ticket 05: drag a point
 // to where it lands, src/gesture/), two fingers move the view and a button
-// tilts it to show the layers. The Model player (which chooses the Step and
-// plays its Recording) comes with ticket 07. The house button stays in index.html (suite
-// rule 5).
+// tilts it to show the layers. Notation is drawn on the paper with the Step
+// text underneath, and mistakes are calm (ticket 06: src/notation/,
+// src/help/). The Model player (which chooses the Step and plays its
+// Recording) comes with ticket 07; until then src/help/fixture.ts stands in
+// for it. The house button stays in index.html (suite rule 5).
 //
 // This page carries no physics and no engine: a Step's motion was recorded
 // once on the computer (src/motion/record.ts) and is only played back here.
@@ -11,6 +13,8 @@
 import "./style.css";
 import cupStep1 from "./recordings/cup-1.json";
 import { FoldGesture } from "./gesture/drag";
+import { fixtureSteps } from "./help/fixture";
+import { helpPage } from "./help/page";
 import type { Recording } from "./motion/recording";
 import { clamp, FLAT, fitting, pinched, pinchOf, TILTED, viewOf, type Orbit, type Touch } from "./view/camera";
 import { pointerOf } from "./view/pointer";
@@ -20,7 +24,6 @@ import { PaperView } from "./view/view";
 const stage = document.querySelector<HTMLElement>("#stage")!;
 const canvas = document.querySelector<HTMLCanvasElement>("#paper")!;
 const tiltButton = document.querySelector<HTMLButtonElement>("#tilt")!;
-const foldButton = document.querySelector<HTMLButtonElement>("#fold")!;
 const readout = document.querySelector<HTMLElement>("#stats")!;
 
 // --- The paper and the view ------------------------------------------------
@@ -42,6 +45,7 @@ function draw() {
   view.show(paper.at(progress));
   view.look(viewOf(orbit));
   view.render();
+  help.draw(progress === 0);
   if (showStats) {
     const { renders, ms, drawCalls, triangles } = view.stats;
     readout.textContent = `renders ${renders}, ${ms.toFixed(2)} ms, ${drawCalls} calls, ${triangles} triangles`;
@@ -98,10 +102,10 @@ tiltButton.addEventListener("click", () => setTilted(!tilted));
 // --- One finger (or the Pencil) on the paper folds it ------------------------
 // All the logic is in src/gesture/drag.ts; here it is given the fixture Step
 // and told how to draw. Ticket 07's player supplies the Step's Folds still to
-// make and takes `folded`; ticket 06's calm help takes `missed`.
+// make and takes `folded`; calm help (src/help/) takes `missed`.
 
 const gesture = new FoldGesture({
-  folds: () => (folded || progress !== 0 ? [] : [paper]),
+  folds: () => (progress !== 0 ? [] : help.folds()),
   pointer: () => {
     const rect = canvas.getBoundingClientRect();
     return pointerOf(viewOf(orbit), rect.width, rect.height);
@@ -114,9 +118,10 @@ const gesture = new FoldGesture({
   settle: (_fold, from, to, done) =>
     animate("fold", Math.max(160, (to ? 900 : 600) * Math.abs(to - from)), (k) => (progress = from + (to - from) * k), done),
   folded: () => {
-    folded = true;
-    foldButton.textContent = "Unfold";
+    steps.made();
+    help.changed();
   },
+  missed: () => help.missed(),
 });
 /** A pointer event's place on the canvas, in CSS pixels from its top left. */
 const onCanvas = (e: PointerEvent): [number, number] => {
@@ -164,24 +169,25 @@ const lift = (e: PointerEvent) => {
 canvas.addEventListener("pointerup", lift);
 canvas.addEventListener("pointercancel", lift);
 
-// --- Temporary: play the Step's Recording ----------------------------------
-// Ticket 07's Model player replaces this button. Until then it also unfolds
-// the Fold his finger made, so he can make it again.
+// --- Notation, Step text, calm help, undo and step back ---------------------
+// All in src/help/ and src/notation/; here they are given the fixture Step.
+// Ticket 07's Model player replaces `steps` (a StepHost) with itself.
 
-let folded = false;
-function setFolded(next: boolean, ms = 1100) {
-  if (gesture.busy) return;
-  folded = next;
-  foldButton.textContent = folded ? "Unfold" : "Fold";
+const steps = fixtureSteps(paper, "Fold the top corner down to the bottom corner.", (done) => {
   const from = progress;
-  const to = folded ? 1 : 0;
-  if (ms <= 0) {
-    progress = to;
-    return;
-  }
-  animate("fold", ms * Math.abs(to - from), (k) => (progress = from + (to - from) * k));
-}
-foldButton.addEventListener("click", () => setFolded(!folded));
+  animate("fold", Math.max(160, 1100 * from), (k) => (progress = from * (1 - k)), done);
+});
+const help = helpPage({
+  steps,
+  pointer: () => {
+    const rect = canvas.getBoundingClientRect();
+    return pointerOf(viewOf(orbit), rect.width, rect.height);
+  },
+  place: (_fold, p) => (progress = p),
+  animate,
+  redraw: draw,
+  busy: () => gesture.busy,
+});
 
 // --- Start ------------------------------------------------------------------
 // Debug only: `?p=0.5&tilt&zoom=1.5&turn=30&stats` opens the page at a given
@@ -190,8 +196,7 @@ foldButton.addEventListener("click", () => setFolded(!folded));
 const p = Number(params.get("p"));
 if (p > 0) {
   progress = Math.min(1, p);
-  folded = progress >= 1;
-  foldButton.textContent = folded ? "Unfold" : "Fold";
+  if (progress >= 1) steps.made();
 }
 if (params.has("tilt")) setTilted(true, 0);
 orbit = clamp(
@@ -204,3 +209,4 @@ orbit = clamp(
 );
 readout.hidden = !showStats;
 fit();
+help.changed();

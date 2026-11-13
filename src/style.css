@@ -81,6 +81,76 @@ body {
   touch-action: none;
 }
 
+/* Notation on the paper: the same ink as everything else, never red. It
+   lies over the canvas and lets every touch through to it. */
+#notation {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 3px;
+}
+
+/* A valley line is dashes; a mountain line is dash, dot, dot. */
+#notation .fold-line.valley {
+  stroke-dasharray: 14 9;
+}
+
+#notation .fold-line.mountain {
+  stroke-dasharray: 16 7 3 7 3 7;
+}
+
+#notation .fold-arrow {
+  stroke-width: 2.5px;
+  stroke-linecap: round;
+}
+
+/* A valley arrow's head is filled; a mountain arrow's is a hollow half. */
+#notation .fold-arrow-head {
+  stroke-width: 2.5px;
+  stroke-linejoin: round;
+}
+
+#notation .fold-arrow-head.valley {
+  fill: var(--ink);
+}
+
+#notation .fold-arrow-head.mountain {
+  fill: var(--card);
+}
+
+/* After a miss the target line swells and settles, once. Never loops. */
+#notation .fold-line.pulse {
+  animation: line-pulse 900ms ease-in-out 1;
+}
+
+@keyframes line-pulse {
+  0%,
+  100% {
+    stroke-width: 3px;
+  }
+  45% {
+    stroke-width: 9px;
+  }
+}
+
+/* The Step's text, under the paper. */
+#step {
+  min-height: 34px;
+  max-width: 40em;
+  text-align: center;
+}
+
+#step p {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.4;
+}
+
 /* Big, calm buttons along the bottom, like the house button. */
 #controls {
   display: flex;
@@ -110,7 +180,17 @@ body {
   color: var(--card);
 }
 
-#controls button:active {
+#controls button[hidden] {
+  display: none;
+}
+
+/* Nothing to take back: the button stays in its place, quietly. */
+#controls button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+#controls button:active:not(:disabled) {
   transform: translateY(4px);
   box-shadow: 0 0 0 var(--ink);
 }

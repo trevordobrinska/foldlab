@@ -24,13 +24,22 @@
       <!-- The paper, drawn in 3D. One finger on it folds it; two fingers move the view. -->
       <div id="stage">
         <canvas id="paper" aria-label="Paper"></canvas>
+        <!-- Notation, drawn over the paper: the Step's fold lines and arrows. -->
+        <svg id="notation" aria-hidden="true"></svg>
+      </div>
+      <!-- The Step's text, under the paper. -->
+      <div id="step">
+        <p id="step-text"></p>
       </div>
       <div id="controls">
         <!-- Tilts the view to show the layers, and back. A camera move only. -->
         <button id="tilt" type="button" aria-pressed="false">Tilt</button>
-        <!-- Temporary (ticket 04): plays the one recorded Step, and unfolds the
-             Fold his finger made. Ticket 07's Model player replaces it. -->
-        <button id="fold" type="button">Fold</button>
+        <!-- Takes back the last Fold. -->
+        <button id="undo" type="button">Undo</button>
+        <!-- Back to the start of this Step, or of the Step before. -->
+        <button id="step-back" type="button">Step back</button>
+        <!-- Calm help: offered after a few misses; plays the Fold once. -->
+        <button id="show-me" type="button" hidden>Show me</button>
       </div>
       <p id="stats" hidden></p>
     </main>
