@@ -22,6 +22,7 @@ import {
   PlaneGeometry,
   Scene,
   ShadowMaterial,
+  Vector3,
   WebGLRenderer,
 } from "three";
 import { applyView, type View } from "./frame";
@@ -50,6 +51,7 @@ export class PaperView {
   private width = 1;
   private height = 1;
   private view: View | undefined;
+  private readonly turnAxis = new Vector3();
 
   // One material per role. Faces are drawn twice from one geometry: the
   // coloured side as the front, the white side as the back.
@@ -108,6 +110,12 @@ export class PaperView {
   colours(front: string, back: string): void {
     this.front.color.set(front);
     this.back.color.set(back);
+  }
+
+  /** Holds the paper turned about a line through its centre and lifted (camera.ts, `turnedOver`). Render afterwards. */
+  turn(axis: { x: number; y: number; z: number }, angle: number, lift: number): void {
+    this.paper.quaternion.setFromAxisAngle(this.turnAxis.set(axis.x, axis.y, axis.z), angle);
+    this.paper.position.y = lift;
   }
 
   /** Points the camera. Render afterwards. */

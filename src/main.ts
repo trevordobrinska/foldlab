@@ -14,14 +14,15 @@ import { FoldGesture } from "./gesture/drag";
 import { helpPage, type HelpPage } from "./help/page";
 import { openModel } from "./library/library";
 import { playerPage, type PlayerPage } from "./player-page";
-import { clamp, FLAT, fitting, pinched, pinchOf, TILTED, viewOf, type Orbit, type Touch } from "./view/camera";
+import { clamp, FLAT, fitting, pinched, pinchOf, TILTED, turnedOver, viewOf, type Orbit, type Touch } from "./view/camera";
 import { modelPapers } from "./view/model-papers";
-import { pointerOf } from "./view/pointer";
+import { pointerOf, turnedPointer } from "./view/pointer";
 import { PaperView } from "./view/view";
 
 const stage = document.querySelector<HTMLElement>("#stage")!;
 const canvas = document.querySelector<HTMLCanvasElement>("#paper")!;
 const tiltButton = document.querySelector<HTMLButtonElement>("#tilt")!;
+const flipButton = document.querySelector<HTMLButtonElement>("#flip")!;
 const readout = document.querySelector<HTMLElement>("#stats")!;
 
 // --- The paper and the view ------------------------------------------------
@@ -36,15 +37,21 @@ const view = new PaperView(canvas);
 view.colours(model.paper.front, model.paper.back);
 let orbit: Orbit = home;
 let tilted = false;
+/** Looking at the paper's other side, and how far it has turned (0 to 1). */
+let flipped = false;
+let flip = 0;
 
 const params = new URLSearchParams(location.search);
 const showStats = params.has("stats");
 
 function draw() {
   view.show(player.paper.at(player.progress));
+  const held = turnedOver(flip, orbit.azimuth, Math.max(papers.extent.x, papers.extent.z));
+  view.turn(held.axis, held.angle, held.lift);
   view.look(viewOf(orbit));
   view.render();
-  help.draw(player.goingBack ? "hidden" : player.progress === 0 ? "rest" : "folding");
+  // No Notation while the paper is on its way over.
+  help.draw(player.goingBack || turning() ? "hidden" : player.progress === 0 ? "rest" : "folding");
   if (showStats) {
     const { renders, ms, drawCalls, triangles } = view.stats;
     readout.textContent = `renders ${renders}, ${ms.toFixed(2)} ms, ${drawCalls} calls, ${triangles} triangles`;
@@ -98,13 +105,45 @@ function setTilted(next: boolean, ms = 500) {
 }
 tiltButton.addEventListener("click", () => setTilted(!tilted));
 
+// --- The flip button: a look at the other side, and back ----------------------
+// A view move only, like Tilt: the Paper and the Step do not change, and it
+// is not the Fold type "turn over". He can fold from either side: flipped,
+// his finger and the Notation meet the paper where he sees it (`pointer`),
+// a valley is drawn as the mountain it is from behind, and of flaps lying
+// on each other he gets the one facing him. Nothing can be picked up while
+// the paper is on its way over.
+
+const turning = () => flip > 0 && flip < 1;
+
+function setFlipped(next: boolean, ms = 600) {
+  if (next === flipped || gesture.busy) return;
+  flipped = next;
+  flipButton.setAttribute("aria-pressed", String(flipped));
+  flipButton.textContent = flipped ? "Flip back" : "Flip";
+  const from = flip;
+  const to = flipped ? 1 : 0;
+  // The Notation is drawn anew for the side he now sees.
+  const landed = () => {
+    help.changed();
+    draw();
+  };
+  if (ms <= 0) {
+    flip = to;
+    landed();
+    return;
+  }
+  animate("flip", ms, (k) => (flip = from + (to - from) * k), landed);
+}
+flipButton.addEventListener("click", () => setFlipped(!flipped));
+
 // --- The Model player: Steps, Undo, step back, saved progress ----------------
 // Debug only: `?step=3` opens at that Step and saves nothing during the visit.
 
-/** The camera as it is now, on the canvas. */
+/** The camera as it is now, on the canvas; and on the paper as he sees it, when it is flipped. */
 const pointer = () => {
   const rect = canvas.getBoundingClientRect();
-  return pointerOf(viewOf(orbit), rect.width, rect.height);
+  const camera = pointerOf(viewOf(orbit), rect.width, rect.height);
+  return flipped ? turnedPointer(camera, turnedOver(1, orbit.azimuth, 0).axis) : camera;
 };
 
 const openStep = Number(params.get("step"));
@@ -127,6 +166,7 @@ const help: HelpPage = helpPage({
   },
   pointer,
   busy: () => gesture.busy,
+  fromBehind: () => flipped,
 });
 
 // --- One finger (or the Pencil) on the paper folds it ------------------------
@@ -137,6 +177,7 @@ const help: HelpPage = helpPage({
 const gesture = new FoldGesture({
   folds: () => player.folds(),
   pointer,
+  fromBehind: () => flipped,
   show: (fold, p) => player.show(fold, p),
   settle: (fold, from, to, done) => player.settle(fold, from, to, done),
   folded: (fold) => player.folded(fold),
@@ -163,7 +204,7 @@ canvas.addEventListener("pointerdown", (e) => {
   e.preventDefault();
   canvas.setPointerCapture(e.pointerId);
   fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  if (fingers.size === 1) gesture.down(...onCanvas(e));
+  if (fingers.size === 1 && !turning()) gesture.down(...onCanvas(e));
   else gesture.cancel();
 });
 
@@ -189,12 +230,13 @@ canvas.addEventListener("pointerup", lift);
 canvas.addEventListener("pointercancel", lift);
 
 // --- Start ------------------------------------------------------------------
-// Debug only: `?p=0.5&tilt&zoom=1.5&turn=30&stats` opens the page at a given
+// Debug only: `?p=0.5&tilt&flip&zoom=1.5&turn=30&stats` opens the page at a given
 // progress and view, so the drawing can be checked without a finger.
 
 const p = Number(params.get("p"));
 if (p > 0) player.progress = Math.min(1, p);
 if (params.has("tilt")) setTilted(true, 0);
+if (params.has("flip")) setFlipped(true, 0);
 orbit = clamp(
   {
     ...orbit,

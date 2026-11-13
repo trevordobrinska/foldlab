@@ -61,6 +61,27 @@ export function viewOf(orbit: Orbit, tableHeight = 0): View {
   };
 }
 
+/** How the paper is held while he looks at its other side: turned about a line across the table, and lifted clear of it. */
+export interface TurnedOver {
+  /** The line it turns about, through the paper's centre: the one that runs up the screen, so it turns over sideways like a page. */
+  axis: { x: number; y: number; z: number };
+  /** Radians: 0 as it lies, π showing the other side. */
+  angle: number;
+  /** How far it is lifted, so its edge swings over the table and not through it. */
+  lift: number;
+}
+
+/**
+ * The paper `share` of the way (0 to 1) to showing its other side, for a
+ * camera at `azimuth` and a paper reaching `reach` from its centre. A view
+ * move only: the Paper, the Step and its layers do not change (turn over,
+ * the Fold type, is a Step of a Model and is not this).
+ */
+export function turnedOver(share: number, azimuth: number, reach: number): TurnedOver {
+  const angle = Math.PI * Math.min(1, Math.max(0, share));
+  return { axis: { x: -Math.sin(azimuth), y: 0, z: -Math.cos(azimuth) }, angle, lift: Math.sin(angle) * reach };
+}
+
 export function clamp(orbit: Orbit, limits: Limits): Orbit {
   const within = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
   return {
