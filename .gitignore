@@ -1,0 +1,6 @@
+.claude/worktrees/
+node_modules
+dist
+*.log
+import/inbox/
+import/work/

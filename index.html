@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <title>foldlab</title>
+    <!-- Relative, so it works under /foldlab/ (suite rule 1). No manifest and
+         no service worker: only the Arcade is installed (suite rule 6). -->
+    <link rel="icon" type="image/png" href="./icon-512.png" />
+  </head>
+  <body>
+    <!-- The house button: back to the Arcade at the site root (suite rule 5). -->
+    <a id="home-button" href="/" aria-label="Back to the Arcade">
+      <svg viewBox="0 0 48 48" aria-hidden="true">
+        <path d="M8 23 L24 9 L40 23" />
+        <path d="M13 20 V39 H35 V20" />
+        <path d="M21 39 V29 H27 V39" />
+      </svg>
+    </a>
+    <main id="screen"></main>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>
