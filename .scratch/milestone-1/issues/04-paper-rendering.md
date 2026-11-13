@@ -1,6 +1,6 @@
 # Render the paper in three.js with a moveable view
 
-Status: ready-for-agent
+Status: resolved
 Type: task
 Blocked by: 03
 
@@ -22,3 +22,5 @@ Draw an engine state as two-sided paper with visible layer edges, lit so layers 
 - **Numbers.** `npm run typecheck`, `npm test` (10 files: 122 passed, the closed sink's 5 known failures still registered, 1 skipped; about 51 s) and `npm run build` pass. Bundle `index-*.js` 570,511 bytes (142.0 kB gzip), nearly all three.js, against the prototype's 957,538 (232.9 kB gzip); the 30 kB Recording is inlined. Headless Edge, 1180×820: 2 renders to open the page (the first draw and the resize) and none while idle; a render costs 0.70 ms of CPU on software GL, 7 draw calls (2 for the shadow map, then the two paper sides, edges, creases and the shadow floor), 98 triangles; the playback blend 0.3 µs per frame (1.3 µs for the closed sink's 224 triangles). Estimate for the iPad: well under 1 ms of CPU per frame and a trivially small GPU load (about 100 triangles, two near-full-screen fills at 2× pixel ratio with MSAA), so the 1.1 s fold and the 0.5 s tilt should hold 60 fps with room to spare; the only cost that grows with a Model is the triangle count, still a few hundred for the sink.
 - **Screenshots** (headless Edge; flat, tilted, zoomed 1.8× and turned 35°, the cup's first Step halfway flat and tilted, finished flat and tilted): the flat paper, the moving flap (standing, shaded, with its shadow on the paper and the table) and the finished triangle all read well. Honestly: at the true layer gap (0.004 of the paper) a finished flat-folded stack looks like one sheet even tilted; the tilt shows paper that stands or moves, and the shadows, but not the thickness of a stack unless zoomed right in (about 3 px at full zoom). The page tone was deepened (#f6efe0 to #eee3cc) so the white side reads against it.
 - **Known limits.** Edges are WebGL hairlines (one device pixel, half a CSS pixel on the iPad); fat lines would need three's `Line2`. The sun is fixed in the world, so turning the view changes the shading, like a lamp on a table. One finger does nothing yet (ticket 05) and there is no hit test for the paper, so two fingers on it also move the view. The smooth limit (0.015 per sample) is tuned to 105 snapshots; a plain Fold of a corner further than about 0.7 from its line will exceed it and will need more snapshots or a wider limit when it comes. Not yet seen on the iPad.
+
+**2026-11-13, Dad:** Checked on the iPad. Looks good. Resolved.
