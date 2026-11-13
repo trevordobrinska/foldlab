@@ -12,7 +12,7 @@ import { fold, newPaper, type Paper, type Point } from "../engine/paper";
 import { record } from "../motion/record";
 import type { Recording } from "../motion/recording";
 import { steppedPaper } from "../view/shape";
-import { arrowOnScreen, notationOf, type FoldNotation } from "./notation";
+import { arrowOnScreen, notationOf, withoutRepeats, type FoldNotation } from "./notation";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const cup1 = JSON.parse(readFileSync(resolve(here, "../recordings/cup-1.json"), "utf8")) as Recording;
@@ -79,6 +79,36 @@ describe("the Notation of a Fold, from its Recording", () => {
     const paper = steppedPaper(cup1);
     paper.at(0.7);
     expectLine(notationOf(paper)!.lines[0], [0, 1], [1, 0]);
+  });
+});
+
+describe("a Step of several Folds", () => {
+  const line = (x: number): FoldNotation["lines"][number] => [
+    { x, y: 0.01, z: -0.5 },
+    { x, y: 0.01, z: 0.5 },
+  ];
+  const arrow = { from: { x: 0.5, y: 0.01, z: 0 }, to: { x: -0.5, y: 0.01, z: 0 } };
+
+  it("a line two Folds share (a flap folded in front, another behind) is drawn once, as the first Fold's; both keep their arrows", () => {
+    const front: FoldNotation = { kind: "valley", lines: [line(0)], arrow };
+    const behind: FoldNotation = { kind: "mountain", lines: [[line(0)[1], line(0)[0]]], arrow };
+    const [a, b] = withoutRepeats([front, behind]);
+    expect(a).toEqual(front);
+    expect(b.lines).toEqual([]);
+    expect(b.kind).toBe("mountain");
+    expect(b.arrow).toEqual(arrow);
+  });
+
+  it("Folds along different lines each keep their own", () => {
+    const left: FoldNotation = { kind: "valley", lines: [line(-0.25)], arrow };
+    const right: FoldNotation = { kind: "valley", lines: [line(0.25)], arrow };
+    expect(withoutRepeats([left, right])).toEqual([left, right]);
+  });
+
+  it("an arrow that shares its ends with a valley arrow bows the other way when it is a mountain arrow, so both can be seen", () => {
+    const valley = arrowOnScreen({ x: 100, y: 100 }, { x: 500, y: 100 }, "valley")!;
+    const mountain = arrowOnScreen({ x: 100, y: 100 }, { x: 500, y: 100 }, "mountain")!;
+    expect(Math.sign(valley.curve[1].y - 100)).toBe(-Math.sign(mountain.curve[1].y - 100));
   });
 });
 

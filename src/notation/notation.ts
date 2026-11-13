@@ -127,6 +127,23 @@ function joined(segments: ArrayLike<number>): [Flat, Flat][] {
   return lines;
 }
 
+/**
+ * The Notation of a Step's Folds, drawn together: a fold line that a later
+ * Fold shares with an earlier one (a flap folded in front and another
+ * behind, along the same line) is drawn once, as the earlier Fold's, so a
+ * valley line and a mountain line never lie on each other. Every Fold keeps
+ * its arrow.
+ */
+export function withoutRepeats(notations: FoldNotation[]): FoldNotation[] {
+  const near = (a: V3, b: V3) => Math.hypot(a.x - b.x, a.z - b.z) < 0.01;
+  const drawn: [V3, V3][] = [];
+  return notations.map((notation) => {
+    const lines = notation.lines.filter(([a, b]) => !drawn.some(([p, q]) => (near(a, p) && near(b, q)) || (near(a, q) && near(b, p))));
+    drawn.push(...lines);
+    return lines.length === notation.lines.length ? notation : { ...notation, lines };
+  });
+}
+
 /** A fold arrow as drawn: a curve of three points (start, bend, tip: a quadratic Bézier) and its head, tip first. */
 export interface ScreenArrow {
   curve: [Pixel, Pixel, Pixel];
@@ -153,8 +170,11 @@ export function arrowOnScreen(from: Pixel, to: Pixel, kind: LineKind): ScreenArr
   if (length < 8) return undefined;
   const start = { x: from.x + dx * INSET, y: from.y + dy * INSET };
   const tip = { x: to.x - dx * INSET, y: to.y - dy * INSET };
-  // Bowed to the left of its travel, as it is drawn on screen.
-  const bend = { x: from.x + dx / 2 + dy * BOW, y: from.y + dy / 2 - dx * BOW };
+  // Bowed to one side of its travel: a valley arrow to the left as it is
+  // drawn on screen, a mountain arrow to the right, so the two arrows of a
+  // flap folded in front and another behind do not lie on each other.
+  const bow = kind === "valley" ? BOW : -BOW;
+  const bend = { x: from.x + dx / 2 + dy * bow, y: from.y + dy / 2 - dx * bow };
 
   // The head lies along the curve's direction where it ends.
   const tx = tip.x - bend.x;

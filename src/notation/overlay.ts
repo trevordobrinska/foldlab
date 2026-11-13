@@ -49,8 +49,14 @@ export class NotationOverlay {
     }
   }
 
-  /** Puts the Notation where the paper is on screen now. The arrows show only while the paper lies at rest. */
-  draw(pointer: Pointer, atRest: boolean): void {
+  /**
+   * Puts the Notation where the paper is on screen now. The arrows show only
+   * while the paper lies at "rest"; "hidden" shows nothing at all.
+   */
+  draw(pointer: Pointer, mode: "rest" | "folding" | "hidden"): void {
+    this.svg.style.visibility = mode === "hidden" ? "hidden" : "";
+    if (mode === "hidden") return;
+    const atRest = mode === "rest";
     for (const { notation, lines, shaft, head } of this.drawn) {
       notation.lines.forEach(([a, b], i) => {
         const p = pointer.screen(a);
