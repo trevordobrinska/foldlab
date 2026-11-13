@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { contains } from "./geometry";
-import { fold, foldAndUnfold, newPaper, rotate, seenFaces, turnOver, type FoldResult, type Paper } from "./paper";
+import {
+  fold,
+  foldAndUnfold,
+  insideReverse,
+  newPaper,
+  rotate,
+  seenFaces,
+  turnOver,
+  type FoldResult,
+  type Paper,
+  type SeenFace,
+} from "./paper";
 
 type Point = [number, number];
 
@@ -290,5 +301,80 @@ describe("refusals", () => {
       ok: false,
       refusal: "misses-flap",
     });
+  });
+});
+
+describe("inside reverse", () => {
+  // A square folded in half along its diagonal: a two-layer triangle whose
+  // spine runs from (0, 0) to (1, 1). The corner at (1, 1) is a two-layer point.
+  const point = () =>
+    folded(fold(newPaper(), { line: { origin: [0, 0], vector: [1, 1] }, flap: [0.9, 0.1], assignment: "V" }));
+  // The line across the point: from the spine at (0.6, 0.6) to the top edge at (0.7, 1).
+  const across = { origin: [0.6, 0.6] as Point, vector: [0.1, 0.4] as Point };
+  const tip: Point = [0.95, 0.95];
+  const near = (a: Point, b: Point) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 1e-9;
+  /** The body of each layer is what's left of its triangle: a quadrilateral. The tips are triangles. */
+  const isBody = (f: SeenFace) => f.polygon.length === 4;
+
+  /** The mirror image of a point across the line. */
+  function reflected([x, y]: Point): Point {
+    const [ox, oy] = across.origin;
+    const len = Math.hypot(...across.vector);
+    const ux = across.vector[0] / len;
+    const uy = across.vector[1] / len;
+    const dx = x - ox;
+    const dy = y - oy;
+    const along = dx * ux + dy * uy;
+    return [ox + 2 * along * ux - dx, oy + 2 * along * uy - dy];
+  }
+
+  it("reverses the tip between its own two layers: a four-layer stack", () => {
+    const paper = folded(insideReverse(point(), { line: across, tip }));
+    const faces = seenFaces(paper);
+    expect(faces).toHaveLength(4);
+    const bodies = faces.filter(isBody).sort((a, b) => a.layer - b.layer);
+    const tips = faces.filter((f) => !isBody(f)).sort((a, b) => a.layer - b.layer);
+    expect(bodies).toHaveLength(2);
+    expect(tips).toHaveLength(2);
+    // The tip part lies mirrored across the line, over the body.
+    const tipShape = shape(([[0.6, 0.6], [0.7, 1], [1, 1]] as Point[]).map(reflected));
+    expect(shape(tips[0].polygon)).toEqual(tipShape);
+    expect(shape(tips[1].polygon)).toEqual(tipShape);
+    // From the bottom: body, tip, tip, body. Each tip is between its own body and the middle.
+    expect(bodies[0].layer).toBeLessThan(tips[0].layer);
+    expect(tips[1].layer).toBeLessThan(bodies[1].layer);
+    // Each tip now shows its other side.
+    expect(tips[0].front).toBe(!bodies[0].front);
+    expect(tips[1].front).toBe(!bodies[1].front);
+  });
+
+  it("inverts the tip's spine and creases both layers toward the middle", () => {
+    const { graph } = folded(insideReverse(point(), { line: across, tip }));
+    const edgeBetween = (from: Point, to: Point) =>
+      graph.edges_vertices.findIndex(([u, v]) => {
+        const a = graph.vertices_coords[u];
+        const b = graph.vertices_coords[v];
+        return (near(a, from) && near(b, to)) || (near(a, to) && near(b, from));
+      });
+    // Beyond the line the spine has turned the other way; up to the line it holds its valley.
+    expect(graph.edges_foldAngle[edgeBetween([0.6, 0.6], [1, 1])]).toBe(-180);
+    expect(graph.edges_foldAngle[edgeBetween([0, 0], [0.6, 0.6])]).toBe(180);
+    // Both layers' fronts face the middle, so both new creases are valleys.
+    expect(creases({ graph } as Paper).sort()).toEqual(["M", "V", "V", "V"]);
+  });
+
+  it("refuses when there is no two-layer point under his finger", () => {
+    expect(insideReverse(newPaper(), { line: across, tip })).toEqual({ ok: false, refusal: "no-flap" });
+  });
+
+  it("refuses when the line misses the point", () => {
+    expect(insideReverse(point(), { line: vertical(3), tip })).toEqual({ ok: false, refusal: "misses-flap" });
+  });
+
+  it("does not change the Paper it was given", () => {
+    const paper = point();
+    const before = JSON.stringify(paper);
+    insideReverse(paper, { line: across, tip });
+    expect(JSON.stringify(paper)).toBe(before);
   });
 });

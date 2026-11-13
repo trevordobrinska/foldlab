@@ -69,14 +69,16 @@ describe("the paper", () => {
     expect(model("sink", 0.75).faces.some((f) => f.xray)).toBe(true);
   });
 
-  it("inside reverse: the tip ends reversed, well below where it started", () => {
+  it("inside reverse: the tip stays in between the layers on the table, and comes out across the edge", () => {
     const start = anchor("insideReverse", 0);
     const end = anchor("insideReverse", 1);
-    expect(end.y).toBeLessThan(start.y - 0.4);
-    expect(Math.abs(end.x - start.x)).toBeLessThan(0.15);
-    expect(Math.abs(end.z)).toBeLessThan(0.02); // back between the layers
-    // Halfway, the tip has swung out of the point's plane.
-    expect(Math.abs(anchor("insideReverse", 0.5).z)).toBeGreaterThan(0.15);
+    // The point lies flat on the table; its tip never leaves the middle of the layers.
+    model("insideReverse", 0); // a fresh attempt
+    for (const p of [0, 0.25, 0.5, 0.75, 1]) expect(Math.abs(anchor("insideReverse", p).y)).toBeLessThan(0.02);
+    // It comes toward him (+z): the head pokes out across the top edge of the folded square.
+    expect(end.z).toBeGreaterThan(start.z + 0.4);
+    // Real paper: the faces are the physics mesh, many small triangles.
+    expect(model("insideReverse", 0.5).faces.length).toBeGreaterThan(20);
   });
 
   it("rotates about a hinge line", () => {

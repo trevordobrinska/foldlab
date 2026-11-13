@@ -33,3 +33,14 @@ Also: `npm run typecheck`, `npm test` and `npm run build` pass, and screenshots 
 ## Out of scope
 
 Squash and sink (next, the same way, once the inside reverse is accepted; real paper bends a little during a closed sink, so that one needs extra care), view controls (ticket 04), drag-to-land (ticket 05).
+
+## Comments
+
+**2026-11-12, agent:** Implemented; awaiting review.
+
+- Engine: `insideReverse(paper, { line, tip })` in `src/engine/paper.ts`. The two layers under `tip` joined by a folded edge on the tip's side each turn toward the other; creases inside the tip (its spine) turn inside out; each layer's tip keeps its own side of the point in the layer order. `makeFold` was split into a shared cut/perform so both Folds use the same face splitting and `faceOrders` bookkeeping. Tests in `paper.test.ts`.
+- Physics: `src/motion/` (`motionOf(before, after)`): bar-and-hinge mesh (`mesh.ts`: fan + one midpoint subdivision per face, bars on every triangle edge, crease hinges driven from the start angle to the end angle, soft facet hinges), solved by extended position-based dynamics run quasi-statically with Jacobi-averaged passes (`solve.ts`), vertex-face contacts keeping layers a gap apart. Hinge start/end angles are measured on the layered flat-folded Papers, so both ends are exact rests; at either end the paper is pressed flat (stiff facets while settling).
+- A rigid (exact) inside reverse does not exist without unfolding the point's spine completely: the degree-4 vertex where the line meets the spine only moves with the body opening (tan φ · cos α = cot(θ/2)), so the paper bends near the crease, which is what the physics shows and what hands do ("open the layers").
+- Acceptance tests in `src/motion/motion.test.ts` (51 samples): no stretching (max 0.5%), no crossings, tip on the middle plane and the two layers mirror images (to 1e-6), start/finish equal the engine's Papers with layer order, smooth (max step 0.04 of the paper per 2% progress), earlier creases within 10° (the spine stays within 5°), spring-back from 0.3/0.55/0.8 returns within 0.5% of the paper's width.
+- Known limits: unfolding from the finished state (progress 1 back to 0) is not reliable (the tips must come back out of four closed layers and the symmetric path buckles); the prototype starts afresh on "Again" instead. A full sweep costs about 2.5 s of CPU on a desktop, so a fast finger lags on the iPad.
+- Prototype: `proto-gestures/scene.ts` drives the Inside reverse tab from the engine state and the physics; squash and sink are still canned.

@@ -78,9 +78,18 @@ export interface FoldSpec {
   layers?: number | "all";
 }
 
+/** An inside reverse, described as he sees the Paper. */
+export interface InsideReverseSpec {
+  /** The line the tip reverses along, in the coordinates he sees. */
+  line: Line;
+  /** A point on the tip: the part beyond the line that goes in between its two layers. */
+  tip: Point;
+}
+
 /**
  * Why a Fold can't be made:
- * - `no-flap`: there is no paper at `flap` (or it lies on the line).
+ * - `no-flap`: there is no paper at `flap` (or it lies on the line); for an
+ *   inside reverse, no two-layer point under `tip`.
  * - `misses-flap`: the line doesn't cross the flap, so nothing would hinge.
  * - `blocked`: paper that isn't moving lies in the flap's path.
  */
@@ -125,7 +134,31 @@ export function foldAndUnfold(paper: Paper, spec: FoldSpec): FoldResult {
   return makeFold(paper, spec, false);
 }
 
-function makeFold(paper: Paper, spec: FoldSpec, moves: boolean): FoldResult {
+/** The Paper laid out in its folded frame, cut by a line: everything a Fold along it needs to know. */
+interface Cut {
+  graph: FoldGraph;
+  folded: Point[];
+  winding: number[];
+  /** 1 when face a lies above face b along the folded frame's +z, -1 below, undefined when they don't overlap. */
+  height: (a: number, b: number) => number | undefined;
+  edges: ReturnType<typeof edgeLookup>;
+  line: Line;
+  /** The side of the line the moving part is on, as `side` reports it. */
+  flapSide: 1 | -1;
+  /** 1 on the moving side, -1 across the line, 0 on it. */
+  vertexSide: number[];
+  /** Each face's part on the moving side of the line. */
+  pieces: Point[][];
+  hasPiece: boolean[];
+  /** The union-find root of the group of faces joined on the moving side. */
+  find: (f: number) => number;
+  /** The point he touched, in the folded frame. */
+  touch: Point;
+  /** +1 when his side of the Paper is the folded frame's +z. */
+  facing: number;
+}
+
+function cut(paper: Paper, seenLine: Line, seenTouch: Point): Cut | "no-flap" {
   const { graph } = paper;
   const folded = foldedCoords(paper);
   const polygons = graph.faces_vertices.map((vertices) => vertices.map((v) => folded[v]));
@@ -134,18 +167,16 @@ function makeFold(paper: Paper, spec: FoldSpec, moves: boolean): FoldResult {
 
   // Work in the folded frame, where +z is the root face's front.
   const toFolded = invert(paper.view);
-  const line: Line = { origin: apply(toFolded, spec.line.origin), vector: applyLinear(toFolded, spec.line.vector) };
-  const flapPoint = apply(toFolded, spec.flap);
-  const toward = (spec.assignment === "V" ? 1 : -1) * Math.sign(determinant(paper.view));
-  const flapSide = side(line, flapPoint);
-  if (flapSide === 0) return { ok: false, refusal: "no-flap" };
+  const line: Line = { origin: apply(toFolded, seenLine.origin), vector: applyLinear(toFolded, seenLine.vector) };
+  const touch = apply(toFolded, seenTouch);
+  const flapSide = side(line, touch);
+  if (flapSide === 0) return "no-flap";
 
-  // 1 on the flap's side, -1 across the line, 0 on it.
   const vertexSide = folded.map((p) => side(line, p) * flapSide);
   const pieces = polygons.map((polygon) => clipToSide(polygon, line, flapSide));
   const hasPiece = pieces.map((piece) => piece.length > 2 && Math.abs(signedArea(piece)) > AREA_EPSILON);
 
-  // Faces joined on the flap's side of the line move together.
+  // Faces joined on the moving side of the line move together.
   const edges = edgeLookup(graph);
   const group = graph.faces_vertices.map((_, f) => f);
   const find = (f: number): number => (group[f] === f ? f : (group[f] = find(group[f])));
@@ -156,27 +187,107 @@ function makeFold(paper: Paper, spec: FoldSpec, moves: boolean): FoldResult {
     }
   });
 
-  // The layers under his finger, nearest the side the flap moves toward first.
-  const under = graph.faces_vertices
-    .map((_, f) => f)
-    .filter((f) => hasPiece[f] && contains(pieces[f], flapPoint))
-    .sort((a, b) => -toward * (height(a, b) ?? 0));
-  if (under.length === 0) return { ok: false, refusal: "no-flap" };
-  const count = spec.layers === "all" ? under.length : Math.min(Math.max(spec.layers ?? 1, 1), under.length);
-  const flapGroups = new Set(under.slice(0, count).map(find));
-  const inFlap = graph.faces_vertices.map((_, f) => hasPiece[f] && flapGroups.has(find(f)));
+  const facing = Math.sign(determinant(paper.view));
+  return { graph, folded, winding, height, edges, line, flapSide, vertexSide, pieces, hasPiece, find, touch, facing };
+}
 
-  // Paper that stays, on the flap's side and further toward where the flap moves, is in the way.
+/** The faces whose moving-side piece lies under his finger, nearest `toward` first. */
+function facesUnder(c: Cut, toward: number): number[] {
+  return c.graph.faces_vertices
+    .map((_, f) => f)
+    .filter((f) => c.hasPiece[f] && contains(c.pieces[f], c.touch))
+    .sort((a, b) => -toward * (c.height(a, b) ?? 0));
+}
+
+/** Is paper that stays, on the moving side and further toward where face m moves, in its way? */
+function blocked(c: Cut, inFlap: boolean[], towardOf: (f: number) => number): boolean {
   for (let m = 0; m < inFlap.length; m++) {
     if (!inFlap[m]) continue;
     for (let s = 0; s < inFlap.length; s++) {
-      if (inFlap[s] || !hasPiece[s]) continue;
-      if ((height(s, m) ?? 0) * toward > 0 && overlapArea(pieces[s], pieces[m]) > AREA_EPSILON) {
-        return { ok: false, refusal: "blocked" };
+      if (inFlap[s] || !c.hasPiece[s]) continue;
+      if ((c.height(s, m) ?? 0) * towardOf(m) > 0 && overlapArea(c.pieces[s], c.pieces[m]) > AREA_EPSILON) {
+        return true;
       }
     }
   }
+  return false;
+}
 
+function makeFold(paper: Paper, spec: FoldSpec, moves: boolean): FoldResult {
+  const c = cut(paper, spec.line, spec.flap);
+  if (c === "no-flap") return { ok: false, refusal: "no-flap" };
+  const toward = (spec.assignment === "V" ? 1 : -1) * c.facing;
+
+  // The layers under his finger, nearest the side the flap moves toward first.
+  const under = facesUnder(c, toward);
+  if (under.length === 0) return { ok: false, refusal: "no-flap" };
+  const count = spec.layers === "all" ? under.length : Math.min(Math.max(spec.layers ?? 1, 1), under.length);
+  const flapGroups = new Set(under.slice(0, count).map(c.find));
+  const inFlap = c.graph.faces_vertices.map((_, f) => c.hasPiece[f] && flapGroups.has(c.find(f)));
+  if (blocked(c, inFlap, () => toward)) return { ok: false, refusal: "blocked" };
+
+  // The flap turns over as one piece: its own order reverses and it lands beyond every face that stayed.
+  return perform(paper, c, inFlap, () => toward, moves, {
+    bothMoved: (before) => -before,
+    oneMoved: () => toward,
+    invertInside: false,
+  });
+}
+
+/**
+ * Inside reverse: the tip of a two-layer point (beyond the line, under his
+ * finger) goes in between the point's own layers. Each layer's tip turns
+ * toward the other layer, and the creases inside the tip turn inside out.
+ */
+export function insideReverse(paper: Paper, spec: InsideReverseSpec): FoldResult {
+  const c = cut(paper, spec.line, spec.tip);
+  if (c === "no-flap") return { ok: false, refusal: "no-flap" };
+
+  // The point: the two layers nearest him under his finger, joined by a folded edge on the tip's side.
+  const under = facesUnder(c, c.facing);
+  const joined = (a: number, b: number) =>
+    c.edges.faces.some((faces, e) => {
+      const [u, v] = c.graph.edges_vertices[e];
+      const spine = faces.length === 2 && faces.includes(a) && faces.includes(b);
+      return spine && Math.abs(c.graph.edges_foldAngle[e]) === 180 && Math.max(c.vertexSide[u], c.vertexSide[v]) > 0;
+    });
+  const top = under.findIndex((a, i) => i + 1 < under.length && joined(a, under[i + 1]));
+  if (top < 0) return { ok: false, refusal: "no-flap" };
+  const [a, b] = [under[top], under[top + 1]];
+
+  // Each layer's tip and whatever is joined to it on that side, apart from the other layer.
+  const sideOf = (f: number) => (c.find(f) !== c.find(a) ? 0 : c.height(f, b) === c.height(a, b) ? 1 : -1);
+  const inFlap = c.graph.faces_vertices.map((_, f) => c.hasPiece[f] && sideOf(f) !== 0);
+  const towardOf = (f: number) => (c.height(a, b) ?? 0) * -sideOf(f);
+  if (blocked(c, inFlap, towardOf)) return { ok: false, refusal: "blocked" };
+
+  // Each layer's tip stays on its own side of the point, mirrored within it.
+  return perform(paper, c, inFlap, towardOf, true, {
+    bothMoved: (before, i, j) => (sideOf(i) === sideOf(j) ? -before : before),
+    oneMoved: (moved, stayed) => c.height(moved, stayed) ?? c.height(sideOf(moved) === 1 ? b : a, stayed),
+    invertInside: true,
+  });
+}
+
+interface Landing {
+  /** Order after the Fold of two moved faces from different faces before, given their order before. */
+  bothMoved: (before: number, i: number, j: number) => number;
+  /** Order after of a moved face above (1) or below (-1) a face that stayed, from their faces before. */
+  oneMoved: (moved: number, stayed: number) => number | undefined;
+  /** Turn the creases inside the moving part inside out (an inside reverse). */
+  invertInside: boolean;
+}
+
+/** Crease and move the faces in `inFlap` along the line, each toward `towardOf(f)` (+1 is the folded frame's +z). */
+function perform(
+  paper: Paper,
+  c: Cut,
+  inFlap: boolean[],
+  towardOf: (f: number) => number,
+  moves: boolean,
+  landing: Landing,
+): FoldResult {
+  const { graph, folded, winding, height, edges, line, vertexSide } = c;
   const crossed = (f: number) => graph.faces_vertices[f].some((v) => vertexSide[v] < 0);
   const splitFaces = inFlap.flatMap((flap, f) => (flap && crossed(f) ? [f] : []));
   const hingeEdges = edges.faces.flatMap((faces, e) => {
@@ -188,7 +299,7 @@ function makeFold(paper: Paper, spec: FoldSpec, moves: boolean): FoldResult {
   if (splitFaces.length === 0 && hingeEdges.length === 0) return { ok: false, refusal: "misses-flap" };
 
   // A face turning toward its front side makes a valley crease, away a mountain.
-  const turn = (f: number) => (moves ? (winding[f] === toward ? 180 : -180) : 0);
+  const turn = (f: number) => (moves ? (winding[f] === towardOf(f) ? 180 : -180) : 0);
   const next: FoldGraph = structuredClone(graph);
   if (moves) {
     for (const e of hingeEdges) {
@@ -246,6 +357,20 @@ function makeFold(paper: Paper, spec: FoldSpec, moves: boolean): FoldResult {
     next.edges_assignment.push(assignmentOf(angle));
   }
 
+  // An inside reverse turns the moving part inside out: every crease within it
+  // (both ends on the moving side or the line, both faces moving) reverses.
+  if (landing.invertInside) {
+    const nextEdges = edgeLookup(next);
+    next.edges_vertices.forEach(([u, v], e) => {
+      const faces = nextEdges.faces[e];
+      const inside = faces.length === 2 && faces.every((f) => nextInFlap[f]);
+      if (inside && newSide[u] >= 0 && newSide[v] >= 0 && Math.max(newSide[u], newSide[v]) > 0) {
+        next.edges_foldAngle[e] = -next.edges_foldAngle[e];
+        next.edges_assignment[e] = assignmentOf(next.edges_foldAngle[e]);
+      }
+    });
+  }
+
   // Keep a face that didn't move as the root, so the Paper stays where he sees it.
   let { rootFace, view } = paper;
   if (moves && nextInFlap[rootFace]) {
@@ -259,16 +384,20 @@ function makeFold(paper: Paper, spec: FoldSpec, moves: boolean): FoldResult {
   }
 
   // Layer order for every pair of faces that now overlap, worked out in the old
-  // folded frame after the move: the flap turned over as one piece, so its own
-  // order reverses and its faces' fronts flip; it lands further toward where it
-  // moved than any face that stayed.
+  // folded frame after the move: a moved face's front flips, and where it lands
+  // against the others is the Fold's own rule (`landing`). A moved piece lies
+  // toward where it moved from the rest of its own face.
   const moved = (f: number) => moves && nextInFlap[f];
   const windingAfter = (f: number) => (moved(f) ? -winding[origin[f]] : winding[origin[f]]);
   const aboveAfter = (i: number, j: number): number | undefined => {
-    if (moved(i) !== moved(j)) return moved(i) ? toward : -toward;
+    if (moved(i) !== moved(j)) {
+      const [m, s] = moved(i) ? [i, j] : [j, i];
+      const above = origin[m] === origin[s] ? towardOf(origin[m]) : landing.oneMoved(origin[m], origin[s]);
+      return above === undefined ? undefined : moved(i) ? above : -above;
+    }
     if (origin[i] === origin[j]) return undefined;
     const before = height(origin[i], origin[j]);
-    return before === undefined ? undefined : moved(i) ? -before : before;
+    return before === undefined ? undefined : moved(i) ? landing.bothMoved(before, origin[i], origin[j]) : before;
   };
   const nextFolded = makeVerticesCoordsFlatFolded(next, [rootFace]);
   const nextPolygons = next.faces_vertices.map((vertices) => vertices.map((v) => nextFolded[v]));
