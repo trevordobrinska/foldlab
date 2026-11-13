@@ -30,9 +30,24 @@ Each test samples the Fold at many progress values (at least 50 from 0 to 1):
 
 Also: `npm run typecheck`, `npm test` and `npm run build` pass, and screenshots of the inside reverse at the start, halfway and finished look right.
 
+## Revision (2026-11-12): record once, play back
+
+Dad tried the first version: the inside reverse ran at about 20 frames a second, because the physics ran live on every finger move. New rule: **the physics never runs while he is folding.** Each Fold is worked out once, ahead of time, as a recording: a short series of snapshots of the paper from progress 0 to 1. His finger only plays the recording.
+
+1. **Record.** A pure function in `src/motion/` turns (Paper before, Paper after) into a Recording: the mesh plus at least 51 snapshots, with progress 0 and 1 exactly the engine's two Papers. The physics from the first version is reused unchanged except for whatever recording needs.
+2. **Record ahead of time, not in the browser.** Recordings are made on the computer, the way Import works (ADR 0003: Models are imported on Dad's computer and published with the app). For now a script (`npm run record`) writes the prototype's inside reverse recording to a small data file that is committed and loaded by the page. The page contains no physics.
+3. **Play.** `at(p)` blends the two nearest snapshots. Moving the finger costs only that blend plus drawing.
+4. **Spring-back is the recording played backwards** toward progress 0, so "can't unfold from finished" no longer matters, and "Again" plays back to the start too.
+
+Done when, in addition to the tests above (now run on the recording, including points halfway between snapshots):
+
+- **Fast:** playing one frame (blend + mesh update, without the GPU draw) costs under 1 ms on the desktop, measured by a test; the page bundle does not include `src/motion/solve.ts`.
+- **The recording is fresh:** a test re-records and checks it matches the committed file, so the file can't drift from the code.
+- Dad checks on the iPad that the inside reverse follows his finger smoothly.
+
 ## Out of scope
 
-Squash and sink (next, the same way, once the inside reverse is accepted; real paper bends a little during a closed sink, so that one needs extra care), view controls (ticket 04), drag-to-land (ticket 05).
+Squash and sink (next, the same way, as their own tickets: exact engine Fold, recording, and a check against a known origami result; once the inside reverse is accepted; real paper bends a little during a closed sink, so that one needs extra care), view controls (ticket 04), drag-to-land (ticket 05).
 
 ## Comments
 
@@ -44,3 +59,14 @@ Squash and sink (next, the same way, once the inside reverse is accepted; real p
 - Acceptance tests in `src/motion/motion.test.ts` (51 samples): no stretching (max 0.5%), no crossings, tip on the middle plane and the two layers mirror images (to 1e-6), start/finish equal the engine's Papers with layer order, smooth (max step 0.04 of the paper per 2% progress), earlier creases within 10° (the spine stays within 5°), spring-back from 0.3/0.55/0.8 returns within 0.5% of the paper's width.
 - Known limits: unfolding from the finished state (progress 1 back to 0) is not reliable (the tips must come back out of four closed layers and the symmetric path buckles); the prototype starts afresh on "Again" instead. A full sweep costs about 2.5 s of CPU on a desktop, so a fast finger lags on the iPad.
 - Prototype: `proto-gestures/scene.ts` drives the Inside reverse tab from the engine state and the physics; squash and sink are still canned.
+
+**2026-11-12, agent (revision: record once, play back):** Implemented; awaiting review.
+
+- Recording: `src/motion/recording.ts` is the data format (topology once, then `frameCount × vertexCount × 3` positions rounded to 1e-5 of the paper, plus the Paper's `view`; laid out the way FOLD lays out frames so a Step's frame can inherit the topology later). `src/motion/record.ts` makes one from (Paper before, Paper after) with the solver unchanged (`solve.ts`, `mesh.ts`, `hinge.ts`, `motion.ts` untouched). Two things a recording needed that the live finger didn't: snapshots are spaced by how far the paper travels (a first sweep measures it, the kept sweep drives the hinges to the angles at which the paper has moved an equal share), so the tip's fast swing gets the most snapshots and blending halfway between two no longer cuts corners; and the hinges arrive four snapshots early with the paper pressed flat a little at a time over the last ones, because the solver trails its target by a few steps and the old one-shot settle at progress 1 was a 0.026 jump. Snapshot 0 is `mesh.start` and the last is `mesh.end`, rounded. 105 snapshots, forward only; the solver never unfolds.
+- Playback: `src/motion/playback.ts` (`playbackOf(recording).at(p, buffer)`) blends the two nearest snapshots into a Float32Array; no physics imported. Measured by the Fast test: 0.4–0.7 µs per frame for the blend plus laying out the 56-triangle position buffer (budget 1 ms).
+- Ahead of time: `npm run record` (`scripts/record.mjs` boots Vite's SSR loader to run `scripts/record.ts`; no tsx) writes `proto-gestures/recordings/inside-reverse.json` from `proto-gestures/papers.ts` (the Step: square folded on its diagonal, corner reversed along (0.6,0.6)→(0.7,1), rotated 104°). 82 kB, one line per snapshot; about 7 s (two sweeps). `@types/node` added as a devDependency so the record script and the tests that read files typecheck.
+- Prototype: `proto-gestures/scene.ts` plays the recording into one reused buffer; it imports neither the engine nor the physics (the page gets `view` and the mesh from the file). Spring-back and "Again" play back to 0 through the recording (`main.ts`). Squash and sink unchanged.
+- Tests (106 passing, suite about 8 s): `src/motion/motion.test.ts` runs the acceptance tests on a fresh recording through playback at 209 samples, every other one halfway between snapshots; `src/motion/playback.test.ts` has the blend unit tests and Fast; `proto-gestures/recordings.test.ts` has Fresh (re-records, requires the committed file to be the serializer's own output and every coordinate within one rounding step) and the no-physics check, done by walking the page's static import graph from `main.ts` (value imports only; type imports are erased) and asserting `solve.ts`, `hinge.ts`, `mesh.ts`, `motion.ts`, `record.ts`, `engine/paper.ts` and `rabbit-ear` are never reached. That is robust to minification and chunking and needs no build; the built chunk was also grepped by hand (`creaseCompliance`, `findContacts`, `dihedralGradient`, `makeVerticesCoordsFlatFolded`: absent).
+- Measured on the committed recording (209 samples): bars within 0.54%, face areas within 0.93% (0.925% at the snapshots, 0.934% halfway between them), no crossings, tip on the middle plane with the layers mirror images, earlier creases within −5.2°..+1.2°, largest move 0.022 of the paper per snapshot, ends equal the engine's layouts to 5e-6.
+- Bundle: `protoGestures-*.js` 564,591 → 619,442 bytes (158.8 kB gzip). The engine and physics left (about 27 kB) and the 82 kB JSON string came in, inlined by Vite; fetching it as a separate asset would be an easy follow-up if the chunk size matters.
+- Known limits: the 1% face-area margin is thin (0.93%). It is the solver's own squeeze of the tip during the swing (its sliver fan triangles amplify a 0.3% bar error into 0.9% of face area), not the recording's; stiffer bars (more bar passes or over-relaxation) remove the stretch but make the spine over-fold through the neighbouring layer, which the contacts miss at a crease edge, so the tuning was left alone. A bar-only projection of each snapshot was tried and dropped for the same reason. Progress is no longer linear in hinge angle (steady speed under the finger instead), so the layers open earlier in progress than in the first version's screenshots. Dad's iPad check is still to do.

@@ -227,7 +227,17 @@ for (const type of FOLD_ORDER) {
   tabs.append(button);
 }
 
-again.addEventListener("click", () => select(current));
+// "Again" plays the paper back to where the Step began, then waits for his finger.
+again.addEventListener("click", () => {
+  if (animation !== null || progress === 0) {
+    select(current);
+    return;
+  }
+  pointerId = null;
+  endHold();
+  again.classList.remove("ready");
+  animateTo(0, 450, () => select(current));
+});
 
 // Debug only: `?fold=sink&p=0.5` opens a Fold at a given progress so the
 // drawing can be checked without a finger.

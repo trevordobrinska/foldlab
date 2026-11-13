@@ -1,7 +1,18 @@
+// The inside reverse as a Recording, played back: the acceptance tests of
+// ticket 10 run on what his finger plays, not on the live physics. The
+// Recording is made here once (record.ts, the physics run forward) and
+// sampled through playback.ts at twice the snapshot rate, so every other
+// sample lies halfway between two snapshots, where the blend is furthest
+// from anything the solver produced.
+
 import { describe, expect, it } from "vitest";
 import { fold, insideReverse, newPaper, type FoldResult, type Paper } from "../engine/paper";
 import { signedArea } from "../engine/geometry";
-import { dihedral, motionOf, type Mesh, type Motion } from "./motion";
+import { dihedral } from "./hinge";
+import { buildMesh, type Mesh } from "./mesh";
+import { playbackOf, type Playback } from "./playback";
+import { FRAMES, record } from "./record";
+import { PRECISION } from "./recording";
 import { cross, dot, length, sub, type V3 } from "./vec3";
 
 type Point = [number, number];
@@ -21,21 +32,36 @@ const point = () =>
 const before = point();
 const after = folded(insideReverse(before, { line: across, tip: [0.95, 0.95] }));
 
-const SAMPLES = 50;
+/** Twice the snapshot rate: samples 0, 2, 4, ... are snapshots; 1, 3, 5, ... lie halfway between two. */
+const SAMPLES = 2 * (FRAMES - 1);
 const samples = Array.from({ length: SAMPLES + 1 }, (_, i) => i / SAMPLES);
 
-/** The Fold sampled from start to finish, once, shared by the tests below. */
-let motion: Motion;
-let frames: V3[][];
+/** The Fold recorded once and played back at every sample, shared by the tests below. */
+let shared: { mesh: Mesh; play: Playback; frames: V3[][] } | undefined;
 function run() {
-  if (!motion) {
-    motion = motionOf(before, after);
-    frames = samples.map((p) => motion.at(p));
+  if (!shared) {
+    const mesh = buildMesh(before, after);
+    const play = playbackOf(record(before, after));
+    expect(play.frameCount).toBe(FRAMES);
+    const frames = samples.map((p) => toV3s(play.at(p)));
+    shared = { mesh, play, frames };
   }
-  return { motion, frames, mesh: motion.mesh };
+  return shared;
+}
+
+function toV3s(flat: ArrayLike<number>): V3[] {
+  const out: V3[] = [];
+  for (let i = 0; i < flat.length; i += 3) out.push([flat[i], flat[i + 1], flat[i + 2]]);
+  return out;
 }
 
 const r = (n: number) => Math.round(n * 1e6) / 1e6 + 0;
+
+/** Rounded to PRECISION, a coordinate is at most half of it from the engine's; the Float32 blend adds a little. */
+const EXACT = PRECISION / 2 + 1e-7;
+
+/** The largest difference between two positions, coordinate by coordinate. */
+const apart = (a: V3, b: V3) => Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]), Math.abs(a[2] - b[2]));
 
 /** The three corners of a mesh triangle. */
 const corners = (mesh: Mesh, positions: V3[], t: number) => mesh.triangles[t].map((v) => positions[v]) as [V3, V3, V3];
@@ -106,23 +132,39 @@ function layerOrderHolds(mesh: Mesh, positions: V3[], paper: Paper, faceOf: (mes
   });
 }
 
-describe("the inside reverse as paper in motion", { timeout: 120000 }, () => {
+describe("the inside reverse as a Recording played back", { timeout: 120000 }, () => {
+  it("records the mesh it was made from", () => {
+    const { mesh, play } = run();
+    expect(play.vertexCount).toBe(mesh.start.length);
+    expect(play.recording.paperVertexCount).toBe(mesh.paperVertexCount);
+    expect(play.recording.triangles).toEqual(mesh.triangles.flat());
+    expect(play.recording.triangleFace).toEqual(mesh.triangleFace);
+    expect(play.recording.edges).toEqual(mesh.edges);
+    expect(play.recording.view).toEqual(after.view);
+  });
+
   it("starts as the current Paper, in its layer order", () => {
-    const { mesh, frames } = run();
-    for (let v = 0; v < mesh.paperVertexCount; v++) {
-      expect(r(frames[0][v][0])).toBe(r(mesh.start[v][0]));
-      expect(r(frames[0][v][1])).toBe(r(mesh.start[v][1]));
-    }
+    const { mesh, play, frames } = run();
+    const first = toV3s(play.frame(0));
+    mesh.start.forEach((p, v) => {
+      expect(apart(first[v], p)).toBeLessThanOrEqual(PRECISION / 2);
+      expect(apart(frames[0][v], p)).toBeLessThanOrEqual(EXACT);
+    });
     expect(layerOrderHolds(mesh, frames[0], before, (f) => mesh.faceBefore[f])).toBe(true);
   });
 
   it("finishes as the engine's finished Paper, in its layer order", () => {
-    const { mesh, frames } = run();
-    const end = frames[SAMPLES];
-    for (let v = 0; v < mesh.paperVertexCount; v++) {
-      expect(Math.hypot(end[v][0] - mesh.end[v][0], end[v][1] - mesh.end[v][1])).toBeLessThan(0.01);
-    }
-    expect(layerOrderHolds(mesh, end, after, (f) => f)).toBe(true);
+    const { mesh, play, frames } = run();
+    const last = toV3s(play.frame(play.frameCount - 1));
+    mesh.end.forEach((p, v) => {
+      expect(apart(last[v], p)).toBeLessThanOrEqual(PRECISION / 2);
+      expect(apart(frames[SAMPLES][v], p)).toBeLessThanOrEqual(EXACT);
+    });
+    expect(layerOrderHolds(mesh, frames[SAMPLES], after, (f) => f)).toBe(true);
+    // The physics really arrived there: the snapshot before the last is already close.
+    toV3s(play.frame(play.frameCount - 2)).forEach((p, v) => {
+      expect(Math.hypot(p[0] - mesh.end[v][0], p[1] - mesh.end[v][1])).toBeLessThan(0.02);
+    });
   });
 
   it("never stretches: every edge length and face area stays within 1% of the flat paper's", () => {
@@ -187,7 +229,7 @@ describe("the inside reverse as paper in motion", { timeout: 120000 }, () => {
     const { frames } = run();
     for (let k = 1; k < frames.length; k++) {
       frames[k].forEach((p, v) => {
-        expect(length(sub(p, frames[k - 1][v]))).toBeLessThan(0.06);
+        expect(length(sub(p, frames[k - 1][v]))).toBeLessThan(0.015);
       });
     }
   });
@@ -206,15 +248,15 @@ describe("the inside reverse as paper in motion", { timeout: 120000 }, () => {
 
   // A spring-back follows a miss: the finger let go part way (past halfway at
   // most; a push past that is a match and the Fold finishes). From there the
-  // paper is run back to 0, the way it came.
-  it.each([0.3, 0.55, 0.8])("springs back: progress run back to 0 from %f returns the starting state", (turn) => {
-    const motion = motionOf(before, after);
-    const { mesh } = motion;
+  // Recording is played back to 0, the way it came.
+  it.each([0.3, 0.55, 0.8])("springs back: played back to 0 from %f, the paper returns to the starting state the way it came", (turn) => {
+    const { mesh, play, frames } = run();
     const steps = Math.round(turn * SAMPLES);
-    for (let k = 1; k <= steps; k++) motion.at(samples[k]);
-    for (let k = steps - 1; k > 0; k--) motion.at(samples[k]);
-    const back = motion.at(0);
-    // Back where it began, to within half a percent of the paper's width.
-    back.forEach((p, v) => expect(length(sub(p, mesh.start[v]))).toBeLessThan(5e-3));
+    for (let k = steps - 1; k > 0; k--) {
+      // The same shape going back as coming, at every sample.
+      toV3s(play.at(samples[k])).forEach((p, v) => expect(length(sub(p, frames[k][v]))).toBe(0));
+    }
+    const back = toV3s(play.at(0));
+    back.forEach((p, v) => expect(apart(p, mesh.start[v])).toBeLessThanOrEqual(EXACT));
   });
 });

@@ -1,86 +1,76 @@
-// The inside reverse on real paper: the engine's Paper (ticket 03) folded
-// through its earlier Steps, the Fold the engine says comes next, and the
-// physics (src/motion) that moves the paper between the two. Pure and
-// DOM-free, like geometry.ts, which still holds the canned squash and sink.
+// The inside reverse on real paper, played from its Recording: the engine's
+// Paper (ticket 03) folded through its earlier Steps and the Fold the engine
+// says comes next were worked out once by the physics (src/motion) on the
+// computer (`npm run record`, from papers.ts) and written to
+// recordings/inside-reverse.json. Here his finger only plays that back
+// (src/motion/playback.ts), so this page carries no physics and no engine.
+// Pure and DOM-free, like geometry.ts, which still holds the canned squash
+// and sink.
 //
 // The scene is a square folded in half along its diagonal (an earlier Step),
 // then the corner at the end of the spine reversed in between the two
-// layers, so its head comes out across the top edge. The physics frame is
+// layers, so its head comes out across the top edge. The recording's frame is
 // the engine's folded frame; here it is placed on the table like the canned
 // scenes: x to the right as he sees it, y up off the table, z toward him.
 
 import { apply, determinant } from "../src/engine/geometry";
-import { fold, insideReverse, newPaper, rotate, type FoldResult, type Paper } from "../src/engine/paper";
-import { motionOf, type Motion } from "../src/motion/motion";
-import type { V3 } from "../src/motion/vec3";
+import { playbackOf } from "../src/motion/playback";
+import type { Recording } from "../src/motion/recording";
 import type { Face, FoldModel, Segment, V3 as World } from "./geometry";
+import insideReverseData from "./recordings/inside-reverse.json";
 
 const v = (x: number, y: number, z: number): World => ({ x, y, z });
 
-function folded(result: FoldResult): Paper {
-  if (!result.ok) throw new Error(`refused: ${result.refusal}`);
-  return result.paper;
-}
+const play = playbackOf(insideReverseData as Recording);
+const { view, edges, triangles, paperVertexCount } = play.recording;
+const start = play.frame(0);
+const end = play.frame(play.frameCount - 1);
 
-const before = folded(fold(newPaper(), { line: { origin: [0, 0], vector: [1, 1] }, flap: [0.9, 0.1], assignment: "V" }));
-// Then turned on the table (a Step, not a Fold) so the tip's travel comes straight down the screen.
-const after = rotate(folded(insideReverse(before, { line: { origin: [0.6, 0.6], vector: [0.1, 0.4] }, tip: [0.95, 0.95] })), 104);
-
-let motion: Motion | undefined;
-let lastProgress = 0;
-function theMotion(): Motion {
-  return (motion ??= motionOf(before, after));
-}
-
-/** The paper at `progress`. "Again" after a finished Fold starts afresh from the Paper; it doesn't unfold. */
-function positionsAt(progress: number): V3[] {
-  if (progress === 0 && lastProgress === 1) motion = undefined;
-  lastProgress = progress;
-  return theMotion().at(progress);
-}
-
-const facing = Math.sign(determinant(after.view));
+const facing = Math.sign(determinant(view));
 /** How high the middle of the stack sits above the table. */
 const LIFT = 0.01;
 
-/** The middle of the tip's travel as he sees it, put at the world's origin so the camera looks straight at it. */
-const centre = (() => {
-  const { mesh } = theMotion();
-  const tip = tipVertex();
-  const [x0, y0] = apply(after.view, [mesh.start[tip][0], mesh.start[tip][1]]);
-  const [x1, y1] = apply(after.view, [mesh.end[tip][0], mesh.end[tip][1]]);
-  return { x: (x0 + x1) / 2, y: (y0 + y1) / 2 };
-})();
-
-/** A physics-frame point placed in the world as he sees the Paper. */
-function toWorld([x, y, z]: V3): World {
-  const [sx, sy] = apply(after.view, [x, y]);
-  return v(sx - centre.x, facing * z + LIFT, -(sy - centre.y));
-}
-
 /** The mesh vertex of the point's tip: the Paper vertex this Fold carries furthest. */
-function tipVertex(): number {
-  const { mesh } = theMotion();
+const tip = (() => {
   let best = 0;
   let far = -1;
-  for (let i = 0; i < mesh.paperVertexCount; i++) {
-    const d = Math.hypot(mesh.start[i][0] - mesh.end[i][0], mesh.start[i][1] - mesh.end[i][1]);
+  for (let i = 0; i < paperVertexCount; i++) {
+    const d = Math.hypot(start[i * 3] - end[i * 3], start[i * 3 + 1] - end[i * 3 + 1]);
     if (d > far) {
       far = d;
       best = i;
     }
   }
   return best;
+})();
+
+/** The middle of the tip's travel as he sees it, put at the world's origin so the camera looks straight at it. */
+const centre = (() => {
+  const [x0, y0] = apply(view, [start[tip * 3], start[tip * 3 + 1]]);
+  const [x1, y1] = apply(view, [end[tip * 3], end[tip * 3 + 1]]);
+  return { x: (x0 + x1) / 2, y: (y0 + y1) / 2 };
+})();
+
+/** A recording-frame point placed in the world as he sees the Paper. */
+function toWorld(x: number, y: number, z: number): World {
+  const [sx, sy] = apply(view, [x, y]);
+  return v(sx - centre.x, facing * z + LIFT, -(sy - centre.y));
 }
+
+/** One buffer for every frame: playing costs the blend, not garbage. */
+const positions = new Float32Array(play.vertexCount * 3);
 
 /** The paper at `progress`, as faces and lines for the view. */
 export function insideReverseModel(progress: number): FoldModel {
-  const positions = positionsAt(progress);
-  const { mesh } = theMotion();
-  const world = positions.map(toWorld);
-  const faces: Face[] = mesh.triangles.map((tri) => ({ points: tri.map((i) => world[i]) }));
+  play.at(progress, positions);
+  const world: World[] = [];
+  for (let i = 0; i < play.vertexCount; i++) world.push(toWorld(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]));
+  const faces: Face[] = [];
+  for (let t = 0; t < triangles.length; t += 3) {
+    faces.push({ points: [world[triangles[t]], world[triangles[t + 1]], world[triangles[t + 2]]] });
+  }
   const lines: Segment[] = [];
-  for (const edge of mesh.edges) {
+  for (const edge of edges) {
     // A paper edge is solid, as is a crease folded flat; a crease being made is dashed until it is.
     const made = edge.folded || progress >= 0.97;
     const style: Segment["style"] = edge.assignment === "B" || made ? "edge" : "crease";
@@ -93,8 +83,6 @@ export function insideReverseModel(progress: number): FoldModel {
 
 /** Where the tip is at `progress`: the point the finger holds. */
 export function insideReverseAnchor(progress: number): World {
-  const tip = tipVertex();
-  if (progress <= 0) return toWorld(theMotion().mesh.start[tip]);
-  if (progress >= 1) return toWorld(theMotion().mesh.end[tip]);
-  return toWorld(positionsAt(progress)[tip]);
+  const [x, y, z] = play.vertexAt(progress, tip);
+  return toWorld(x, y, z);
 }
