@@ -34,7 +34,7 @@ export type { Point, Line } from "./geometry";
 /** FOLD edge assignment: Boundary, Valley, Mountain, or Flat (a crease lying open). */
 export type Assignment = "B" | "V" | "M" | "F";
 
-/** The crease pattern, as a FOLD object. Coordinates are on the unfolded sheet. */
+/** The crease pattern, as a FOLD object. Coordinates are on the unfolded Paper. */
 export interface FoldGraph {
   vertices_coords: Point[];
   edges_vertices: [number, number][];

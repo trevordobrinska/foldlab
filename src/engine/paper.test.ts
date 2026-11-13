@@ -89,6 +89,17 @@ describe("valley and mountain Folds", () => {
     ]);
   });
 
+  it("records layer order in FOLD's faceOrders convention, as Rabbit Ear's own valley fold does", () => {
+    // Rabbit Ear's simple valley fold writes [moved, stayed, 1]: the moved face lies on the side the stayed face's front faces.
+    const paper = folded(fold(newPaper(), { line: vertical(0.5), flap: [0.75, 0.5], assignment: "V" }));
+    const faces = seenFaces(paper);
+    const moved = faces.findIndex((f) => !f.front);
+    const stayed = faces.findIndex((f) => f.front);
+    const [[f, g, s]] = paper.graph.faceOrders;
+    expect(paper.graph.faceOrders).toHaveLength(1);
+    expect(f === moved ? [f, g, s] : [g, f, s]).toEqual([moved, stayed, 1]);
+  });
+
   it("does not change the Paper it was given", () => {
     const paper = newPaper();
     const before = JSON.stringify(paper);
@@ -114,7 +125,7 @@ describe("folding one flap of layered paper", () => {
       { shape: quarter(0.25), front: false },
       { shape: quarter(0.25), front: true },
     ]);
-    // Seen from his side a valley; on the back of the sheet it is a mountain crease.
+    // Seen from his side a valley; on the back of the Paper it is a mountain crease.
     expect(creases(paper).sort()).toEqual(["M", "V"]);
   });
 

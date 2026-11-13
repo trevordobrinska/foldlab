@@ -1,5 +1,5 @@
 // Plane geometry for flat-folded paper. Every face of paper folded along
-// straight lines from a convex sheet is itself convex, so convex-only
+// straight lines from convex Paper is itself convex, so convex-only
 // algorithms are enough here.
 
 export type Point = [number, number];
