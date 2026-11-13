@@ -9,7 +9,8 @@ import { modelPapers } from "./model-papers";
 const built = buildModel(cupRecipe);
 if (!built.ok) throw new Error("the cup did not build");
 const cup = built.model;
-const folds = cup.steps.flatMap((step) => step.folds);
+/** Every Fold's Recording in the written order. */
+const folds = cup.steps.flatMap((step) => step.folds.map((fold) => fold.recordings[0].recording));
 const papers = modelPapers(cup);
 
 /** The corners of a shape's triangles as "x z" on the table, rounded. */

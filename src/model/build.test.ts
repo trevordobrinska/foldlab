@@ -40,10 +40,42 @@ describe("building the cup", { timeout: 60000 }, () => {
     expect(parseModel(cup)).toEqual({ ok: true, value: cup });
   });
 
-  it("records every Fold", () => {
+  it("records every Fold in the written order", () => {
     const folds = cup.steps.flatMap((step) => step.folds);
     expect(folds.length).toBe(5);
-    for (const { recording } of folds) expect(recording.frameCount).toBeGreaterThanOrEqual(MIN_FRAMES);
+    for (const { recordings } of folds) expect(recordings[0].recording.frameCount).toBeGreaterThanOrEqual(MIN_FRAMES);
+    expect(cup.steps.map((step) => step.folds.map((fold) => fold.recordings[0].after))).toEqual([[[]], [[]], [[]], [[], [0]]]);
+  });
+
+  it("records the last Step's two flaps in either order: front then back, or back then front", () => {
+    const [front, back] = cup.steps[3].folds;
+    expect(front.recordings.map((r) => r.after)).toEqual([[], [1]]);
+    expect(back.recordings.map((r) => r.after)).toEqual([[0], []]);
+    // Either way round ends as the same cup, seen from above.
+    const ends = [front.recordings[1].recording, back.recordings[0].recording].map((recording) =>
+      seenVertices(recording, recording.frameCount - 1)
+        .map(([x, y]) => `${x.toFixed(4)} ${y.toFixed(4)}`)
+        .sort(),
+    );
+    expect(new Set(ends[0])).toEqual(new Set(ends[1]));
+  });
+
+  it("records a Step in the written order only when its Folds are not symmetric", () => {
+    // Fold the square in half, then fold the doubled corner: the other way round is another paper.
+    const model = built({
+      ...cupRecipe,
+      steps: [
+        {
+          text: "Fold in half, then fold the corner.",
+          folds: [
+            { type: "valley", line: { origin: [0.5, 0], vector: [0, 1] }, flap: [0.9, 0.5] },
+            { type: "valley", line: { origin: [0.3, 1], vector: [0.2, -0.2] }, flap: [0.45, 0.95], layers: "all" },
+          ],
+        },
+      ],
+    });
+    expect(model.steps[0].folds.map((fold) => fold.recordings.map((r) => r.after))).toEqual([[[]], [[0]]]);
+    expect(parseModel(model).ok).toBe(true);
   });
 
   it("holds the Paper after each Step as a FOLD frame: the last one is the cup", () => {
@@ -70,7 +102,7 @@ describe("building the cup", { timeout: 60000 }, () => {
   });
 
   it("each Recording begins where the one before it ended, so the paper never jumps between Folds", () => {
-    const recordings = cup.steps.flatMap((step) => step.folds).map((fold) => fold.recording);
+    const recordings = cup.steps.flatMap((step) => step.folds).map((fold) => fold.recordings[0].recording);
     let worstHeight = 0;
     for (let i = 1; i < recordings.length; i++) {
       const ended = seenVertices(recordings[i - 1], recordings[i - 1].frameCount - 1);

@@ -1,6 +1,6 @@
 // The Model file: one Model of the Library as data. Its name, its Source,
 // its Paper, and its Steps; each Step holds its text, its Folds as engine
-// calls with the Recording of each, and the Paper after it as a FOLD frame
+// calls with the Recordings of each, and the Paper after it as a FOLD frame
 // (crease pattern and layer order). Written on Dad's computer by Import
 // (build.ts replays the calls in the engine), read on the iPad by the player.
 //
@@ -61,16 +61,34 @@ export interface PaperFrame {
   "foldlab:view": Affine;
 }
 
+/** One Fold's motion, from one state of its Step. */
+export interface RecordedFold {
+  /**
+   * The Step's other Folds already made when this Recording starts, as their
+   * places in the Step (from 0), ascending. A Recording starts from the Paper
+   * as those Folds left it, so the same Fold made first and made second are
+   * two Recordings.
+   */
+  after: number[];
+  /** From the Paper before the Fold (progress 0) to the Paper after it (1). */
+  recording: Recording;
+}
+
 export interface ModelFold {
   call: FoldCall;
-  /** The Fold's motion from the Paper before it (progress 0) to the Paper after it (1). */
-  recording: Recording;
+  /**
+   * The Fold's motion, once for every state of the Step it may be made in.
+   * Always there: the written order (after every Fold before it in the Step
+   * and none after it). When the Step's Folds may be made in any order
+   * (symmetric Folds), every other state is there too.
+   */
+  recordings: RecordedFold[];
 }
 
 export interface ModelStep {
   /** The Step's instruction, in FoldLab's own words. */
   text: string;
-  /** The Step's Folds, in the order they were replayed and recorded. */
+  /** The Step's Folds, in the order the Source gives them (the written order). */
   folds: ModelFold[];
   /** The Paper once every Fold of the Step is made. */
   frame: PaperFrame;
@@ -103,11 +121,13 @@ export function parseModel(data: unknown): Parsed<Model> {
   if (!isObject(data)) return { ok: false, problems: ["not a Model file"] };
   if (data.version !== MODEL_VERSION) problems.push(`version is ${String(data.version)}, not ${MODEL_VERSION}`);
   header(data, problems);
-  steps(data.steps, problems, (fold, where) => {
+  const before = problems.length;
+  steps(data.steps, problems, (fold, where, place, count) => {
     if (!isObject(fold)) return void problems.push(`${where} is not a Fold`);
     call(fold.call, where, problems);
-    recording(fold.recording, where, problems);
+    recordings(fold.recordings, where, place, count, problems);
   });
+  if (problems.length === before) (data as unknown as Model).steps.forEach((step, s) => ways(step, `Step ${s + 1}`, problems));
   if (Array.isArray(data.steps)) {
     data.steps.forEach((step, s) => isObject(step) && frame(step.frame, `Step ${s + 1}`, problems));
   }
@@ -148,14 +168,15 @@ function header(data: Json, problems: string[]) {
   if (!isColour(paper.front) || !isColour(paper.back)) problems.push("the Paper's two sides each need a colour like #e9a65e");
 }
 
-function steps(list: unknown, problems: string[], checkFold: (fold: unknown, where: string) => void) {
+function steps(list: unknown, problems: string[], checkFold: (fold: unknown, where: string, place: number, count: number) => void) {
   if (!Array.isArray(list) || list.length === 0) return void problems.push("the Model has no Steps");
   list.forEach((step, s) => {
     const where = `Step ${s + 1}`;
     if (!isObject(step)) return void problems.push(`${where} is not a Step`);
     if (!isText(step.text)) problems.push(`${where} has no text`);
-    if (!Array.isArray(step.folds) || step.folds.length === 0) return void problems.push(`${where} has no Folds`);
-    step.folds.forEach((fold, f) => checkFold(fold, `${where}, Fold ${f + 1}`));
+    const { folds } = step;
+    if (!Array.isArray(folds) || folds.length === 0) return void problems.push(`${where} has no Folds`);
+    folds.forEach((fold, f) => checkFold(fold, `${where}, Fold ${f + 1}`, f, folds.length));
   });
 }
 
@@ -173,6 +194,40 @@ function call(data: unknown, where: string, problems: string[]) {
   if (!isPoint(data.flap)) problems.push(`${where}: flap must be a point`);
   if (data.layers !== undefined && data.layers !== "all" && !isCount(data.layers)) {
     problems.push(`${where}: layers must be a whole number above 0, or "all"`);
+  }
+}
+
+/** A Fold's Recordings: each from a state of the Step that can be, the written order among them. */
+function recordings(list: unknown, where: string, place: number, count: number, problems: string[]) {
+  if (!Array.isArray(list) || list.length === 0) return void problems.push(`${where} has no Recording`);
+  const isOther = (x: unknown) => isIndexBelow(count)(x) && x !== place;
+  const states = new Set<string>();
+  for (const entry of list) {
+    if (!isObject(entry)) return void problems.push(`${where} has no Recording`);
+    const { after } = entry;
+    if (!Array.isArray(after) || !after.every(isOther) || after.some((x, i) => i > 0 && x <= after[i - 1])) {
+      problems.push(`${where}: a Recording does not say which of the Step's other Folds it comes after`);
+    } else if (states.has(after.join())) {
+      problems.push(`${where} has two Recordings from the same state of the Step`);
+    } else {
+      states.add(after.join());
+    }
+    recording(entry.recording, where, problems);
+  }
+  if (!states.has(Array.from({ length: place }, (_, i) => i).join())) problems.push(`${where} has no Recording in the written order`);
+}
+
+/** Whichever of a Step's Folds he makes first, there must be a Recording to go on with until all are made. */
+function ways(step: ModelStep, where: string, problems: string[]) {
+  const seen = new Set<string>();
+  const pending: number[][] = [[]];
+  while (pending.length) {
+    const made = pending.pop()!;
+    if (made.length === step.folds.length || seen.has(made.join())) continue;
+    seen.add(made.join());
+    const next = step.folds.flatMap((fold, f) => (!made.includes(f) && fold.recordings.some((r) => r.after.join() === made.join()) ? [f] : []));
+    if (!next.length) problems.push(`${where}: after Fold ${made.map((f) => f + 1).join(" and ")} there is no Recording to go on with`);
+    for (const f of next) pending.push([...made, f].sort((a, b) => a - b));
   }
 }
 

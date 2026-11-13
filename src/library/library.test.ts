@@ -12,7 +12,7 @@ import { recordedFoldTests, sampled, type AcceptanceTest, type RecordedCase } fr
 import { PRECISION } from "../motion/recording";
 import { buildModel, paperOf, replay, serializeModel } from "../model/build";
 import type { Model } from "../model/model";
-import { made, nextFold, opened, progressOf, shown } from "../model/player";
+import { made, opened, progressOf, shown, toMake } from "../model/player";
 import { MODEL_IDS, openModel } from "./library";
 import { cupRecipe, RECIPES } from "./recipes";
 
@@ -59,15 +59,25 @@ describe("the cup, folded from the first Step to the last", () => {
     const cup = await openModel("cup");
     let place = opened(cup, null);
     const walked: string[] = [];
-    while (nextFold(cup, place)) {
-      walked.push(`${place.step + 1}: ${nextFold(cup, place)!.call.type}`);
-      expect(shown(cup, place)).toEqual({ fold: nextFold(cup, place), progress: 0 });
+    while (toMake(cup, place).length) {
+      const [next] = toMake(cup, place);
+      walked.push(`${place.step + 1}: ${cup.steps[place.step].folds[next.fold].call.type}`);
+      expect(shown(cup, place)).toEqual({ recording: next.recording, progress: 0 });
       place = made(cup, place);
     }
     expect(walked).toEqual(["1: valley", "2: valley", "3: valley", "4: valley", "4: mountain"]);
     expect(place.finished).toBe(true);
-    expect(shown(cup, place)).toEqual({ fold: cup.steps[3].folds[1], progress: 1 });
+    expect(shown(cup, place)).toEqual({ recording: cup.steps[3].folds[1].recordings[0].recording, progress: 1 });
     expect(progressOf(cup, place)).toEqual({ step: 0, finished: true });
+  });
+
+  it("lets the last Step's flaps be folded back first, then front", async () => {
+    const cup = await openModel("cup");
+    let place = opened(cup, { step: 3, finished: false });
+    expect(toMake(cup, place).map((offer) => offer.fold)).toEqual([0, 1]);
+    place = made(cup, place, 1);
+    expect(toMake(cup, place).map((offer) => offer.fold)).toEqual([0]);
+    expect(made(cup, place, 0).finished).toBe(true);
   });
 
   it("holds after each Step the Paper the engine has when the Step's calls are replayed", async () => {
@@ -102,18 +112,27 @@ const KNOWN: Record<string, Partial<Record<AcceptanceTest, string>>> = {
   "Step 3, Fold 1": { crossing: THROUGH },
   "Step 4, Fold 1": { crossing: THROUGH, stretch: LONG },
   "Step 4, Fold 2": { crossing: THROUGH, stretch: LONG },
+  "Step 4, Fold 2 made first": { crossing: THROUGH, stretch: LONG },
+  "Step 4, Fold 1 made second": { crossing: THROUGH, stretch: LONG },
 };
 
 const cupFolds: { name: string; fold: RecordedCase }[] = [];
 {
   let paper = newPaper();
-  cupRecipe.steps.forEach((step, s) =>
+  let beforeLastStep = paper;
+  cupRecipe.steps.forEach((step, s) => {
+    beforeLastStep = paper;
     step.folds.forEach((call, f) => {
       const after = folded(paper, call);
       cupFolds.push({ name: `Step ${s + 1}, Fold ${f + 1}`, fold: { before: paper, after } });
       paper = after;
-    }),
-  );
+    });
+  });
+  // The last Step's flaps the other way round: back first, then front.
+  const [front, back] = cupRecipe.steps[3].folds;
+  const backFirst = folded(beforeLastStep, back);
+  cupFolds.push({ name: "Step 4, Fold 2 made first", fold: { before: beforeLastStep, after: backFirst } });
+  cupFolds.push({ name: "Step 4, Fold 1 made second", fold: { before: backFirst, after: folded(backFirst, front) } });
 }
 
 describe.each(cupFolds)("the cup's $name as a Recording played back", { timeout: 120000 }, ({ name, fold }) => {

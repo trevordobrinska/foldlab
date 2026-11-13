@@ -21,7 +21,7 @@
       </svg>
     </a>
     <main id="screen">
-      <!-- The paper, drawn in 3D. Two fingers on it move the view. -->
+      <!-- The paper, drawn in 3D. One finger on it folds it; two fingers move the view. -->
       <div id="stage">
         <canvas id="paper" aria-label="Paper"></canvas>
       </div>
@@ -35,9 +35,9 @@
         <button id="tilt" type="button" aria-pressed="false">Tilt</button>
         <!-- Takes back the last Fold. -->
         <button id="undo" type="button">Undo</button>
-        <!-- Temporary (ticket 07): makes the Step's next Fold for him, until
-             his finger does (ticket 05). Once the Model is finished it
-             starts it again. -->
+        <!-- Temporary (ticket 07): makes the Step's next Fold for him, so a
+             Model can be walked without a finger; ticket 06's "show me"
+             replaces it. Once the Model is finished it starts it again. -->
         <button id="fold" type="button">Fold</button>
       </div>
       <p id="stats" hidden></p>

@@ -59,10 +59,24 @@ describe("a Model file", () => {
   });
 
   it("names the Step and Fold of a Recording that is missing or cut short", () => {
-    expect(problemsOf(damaged((m) => delete (m.steps[1].folds[0] as { recording?: unknown }).recording))).toEqual(["Step 2, Fold 1 has no Recording"]);
-    expect(problemsOf(damaged((m) => m.steps[3].folds[0].recording.positions.pop()))).toEqual([
+    expect(problemsOf(damaged((m) => (m.steps[1].folds[0].recordings = [])))).toEqual(["Step 2, Fold 1 has no Recording"]);
+    expect(problemsOf(damaged((m) => m.steps[3].folds[0].recordings[0].recording.positions.pop()))).toEqual([
       "Step 4, Fold 1: its Recording has positions that do not match its snapshot and vertex counts",
     ]);
+  });
+
+  it("needs every Fold recorded in the written order", () => {
+    // The back flap's Recordings: after the front flap (the written order), and first.
+    expect(problemsOf(damaged((m) => m.steps[3].folds[1].recordings.shift()))).toEqual(["Step 4, Fold 2 has no Recording in the written order"]);
+    expect(problemsOf(damaged((m) => (m.steps[3].folds[1].recordings[0].after = [1])))).toEqual([
+      "Step 4, Fold 2: a Recording does not say which of the Step's other Folds it comes after",
+      "Step 4, Fold 2 has no Recording in the written order",
+    ]);
+  });
+
+  it("is refused when a Step can be begun in an order it can't be finished in", () => {
+    // The back flap may be folded first, but then the front flap has no Recording from there.
+    expect(problemsOf(damaged((m) => m.steps[3].folds[0].recordings.pop()))).toEqual(["Step 4: after Fold 2 there is no Recording to go on with"]);
   });
 
   it("names the Step of a FOLD frame that is missing or does not hold together", () => {

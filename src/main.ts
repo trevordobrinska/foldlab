@@ -1,17 +1,20 @@
 // FoldLab: the paper on his iPad. The Model player (player-page.ts) walks a
-// Model's Steps and chooses the paper to draw; two fingers on the background
-// move the view and a button tilts it to show the layers. Folding gestures
-// come with ticket 05. The house button stays in index.html (suite rule 5).
+// Model's Steps and chooses the paper to draw; one finger on the paper folds
+// it (drag a point to where it lands, src/gesture/), two fingers move the
+// view and a button tilts it to show the layers. The house button stays in
+// index.html (suite rule 5).
 //
 // This page carries no physics and no engine: every Fold of a Model was
 // replayed and recorded once on the computer (src/model/build.ts) and is
 // only played back here.
 
 import "./style.css";
+import { FoldGesture } from "./gesture/drag";
 import { openModel } from "./library/library";
-import { playerPage } from "./player-page";
+import { playerPage, type PlayerPage } from "./player-page";
 import { clamp, FLAT, fitting, pinched, pinchOf, TILTED, viewOf, type Orbit, type Touch } from "./view/camera";
 import { modelPapers } from "./view/model-papers";
+import { pointerOf } from "./view/pointer";
 import { PaperView } from "./view/view";
 
 const stage = document.querySelector<HTMLElement>("#stage")!;
@@ -92,8 +95,40 @@ function setTilted(next: boolean, ms = 500) {
 }
 tiltButton.addEventListener("click", () => setTilted(!tilted));
 
-// --- Two fingers on the background: pinch to zoom, twist to turn, slide to look ---
-// Every touch on the canvas is "background" until folding gestures (ticket 05).
+// --- The Model player: Steps, Undo, saved progress -------------------------
+// Debug only: `?step=3` opens at that Step and saves nothing during the visit.
+
+const openStep = Number(params.get("step"));
+const player: PlayerPage = playerPage(model, papers, {
+  animate,
+  redraw: draw,
+  held: () => gesture.busy,
+  openAt: openStep >= 1 ? { step: openStep - 1, finished: false } : undefined,
+});
+
+// --- One finger (or the Pencil) on the paper folds it ------------------------
+// All the logic is in src/gesture/drag.ts. The player supplies the Step's
+// Folds still to make, draws them and takes `folded`; ticket 06's calm help
+// takes `missed`.
+
+const gesture = new FoldGesture({
+  folds: () => player.folds(),
+  pointer: () => {
+    const rect = canvas.getBoundingClientRect();
+    return pointerOf(viewOf(orbit), rect.width, rect.height);
+  },
+  show: (fold, p) => player.show(fold, p),
+  settle: (fold, from, to, done) => player.settle(fold, from, to, done),
+  folded: (fold) => player.folded(fold),
+});
+/** A pointer event's place on the canvas, in CSS pixels from its top left. */
+const onCanvas = (e: PointerEvent): [number, number] => {
+  const rect = canvas.getBoundingClientRect();
+  return [e.clientX - rect.left, e.clientY - rect.top];
+};
+
+// --- Two fingers anywhere: pinch to zoom, twist to turn, slide to look ---------
+// One finger on the background does nothing; a second finger lets the paper go.
 
 const fingers = new Map<number, Touch>();
 const pair = (): [Touch, Touch] | undefined => {
@@ -107,6 +142,8 @@ canvas.addEventListener("pointerdown", (e) => {
   e.preventDefault();
   canvas.setPointerCapture(e.pointerId);
   fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (fingers.size === 1) gesture.down(...onCanvas(e));
+  else gesture.cancel();
 });
 
 canvas.addEventListener("pointermove", (e) => {
@@ -115,6 +152,7 @@ canvas.addEventListener("pointermove", (e) => {
   const before = pair();
   fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   const after = pair();
+  if (fingers.size === 1) gesture.move(...onCanvas(e));
   if (!before || !after) return;
   const rect = canvas.getBoundingClientRect();
   orbit = pinched(orbit, pinchOf(before, after), rect.width, rect.height, limits);
@@ -122,20 +160,12 @@ canvas.addEventListener("pointermove", (e) => {
 });
 
 const lift = (e: PointerEvent) => {
-  fingers.delete(e.pointerId);
+  if (!fingers.delete(e.pointerId)) return;
+  if (e.type === "pointerup") gesture.up(...onCanvas(e));
+  else gesture.cancel();
 };
 canvas.addEventListener("pointerup", lift);
 canvas.addEventListener("pointercancel", lift);
-
-// --- The Model player: Steps, Undo, saved progress -------------------------
-// Debug only: `?step=3` opens at that Step and saves nothing during the visit.
-
-const openStep = Number(params.get("step"));
-const player = playerPage(model, papers, {
-  animate,
-  redraw: draw,
-  openAt: openStep >= 1 ? { step: openStep - 1, finished: false } : undefined,
-});
 
 // --- Start ------------------------------------------------------------------
 // Debug only: `?p=0.5&tilt&zoom=1.5&turn=30&stats` opens the page at a given
