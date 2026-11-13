@@ -31,3 +31,5 @@ Any Model whose Fold wraps a crease round other layers' edges will carry it, and
 ## Comments
 
 **2026-11-13, agent:** Filed at Dad's request after ticket 14's diagnosis. Not triaged, not started.
+
+**2026-11-13, Dad, on the iPad after ticket 14's turn fix** (`milestone-1` at `1b16fbb`): Steps 2 and 3 look good; Step 4 still breaks down. So this does have to be fixed before ticket 09's session.

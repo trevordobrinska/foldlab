@@ -113,3 +113,5 @@ Where the flap is when nearly down, in layer gaps: in Step 2 at snapshot 100 the
 - Step 4, either flap: the flap should now land on top of the two corners (or behind the cup) without pushing through at the end. Small faults right along the fold line, and the colour patches when lying flat, are expected to remain until ticket 15.
 - Step 1: should look as it did.
 - The last twenty-fifth of each plain Fold's drag now holds the finished paper still, where before the layers settled by half a gap. Say if the end of the drag feels dead.
+
+**2026-11-13, Dad, on the iPad after fix 1** (`milestone-1` at `1b16fbb`): Steps 2 and 3 look good. Step 4 still breaks down. That remainder is ticket 15.
