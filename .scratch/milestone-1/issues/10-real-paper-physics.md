@@ -1,6 +1,6 @@
 # Real paper physics for one Fold at a time, starting with inside reverse
 
-Status: ready-for-agent
+Status: resolved
 Type: task
 Blocked by: 03
 
@@ -70,3 +70,5 @@ Squash and sink (next, the same way, as their own tickets: exact engine Fold, re
 - Measured on the committed recording (209 samples): bars within 0.54%, face areas within 0.93% (0.925% at the snapshots, 0.934% halfway between them), no crossings, tip on the middle plane with the layers mirror images, earlier creases within −5.2°..+1.2°, largest move 0.022 of the paper per snapshot, ends equal the engine's layouts to 5e-6.
 - Bundle: `protoGestures-*.js` 564,591 → 619,442 bytes (158.8 kB gzip). The engine and physics left (about 27 kB) and the 82 kB JSON string came in, inlined by Vite; fetching it as a separate asset would be an easy follow-up if the chunk size matters.
 - Known limits: the 1% face-area margin is thin (0.93%). It is the solver's own squeeze of the tip during the swing (its sliver fan triangles amplify a 0.3% bar error into 0.9% of face area), not the recording's; stiffer bars (more bar passes or over-relaxation) remove the stretch but make the spine over-fold through the neighbouring layer, which the contacts miss at a crease edge, so the tuning was left alone. A bar-only projection of each snapshot was tried and dropped for the same reason. Progress is no longer linear in hinge angle (steady speed under the finger instead), so the layers open earlier in progress than in the first version's screenshots. Dad's iPad check is still to do.
+
+**2026-11-12, Dad:** Checked on the iPad. The inside reverse follows the finger smoothly and looks right. Resolved.
