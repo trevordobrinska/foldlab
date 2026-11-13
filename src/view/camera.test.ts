@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clamp, fitting, FLAT, pinched, pinchOf, TILTED, viewOf, type Orbit, type Touch } from "./camera";
+import { clamp, fitting, FLAT, pinched, pinchOf, TILTED, turnedOver, viewOf, type Orbit, type Touch } from "./camera";
 
 const extent = { x: 0.5, z: 0.5 };
 const { orbit: home, limits } = fitting(extent);
@@ -85,5 +85,27 @@ describe("two fingers move the view", () => {
     expect(orbit.target.x).toBe(-extent.x);
     expect(orbit.target.z).toBe(extent.z);
     expect(clamp({ ...home, target: { x: 9, z: -9 } }, limits).target).toEqual({ x: 0.5, z: -0.5 });
+  });
+});
+
+describe("flip: a look at the paper's other side", () => {
+  it("lies as it was at the start and shows the other side at the end, on the table both times", () => {
+    expect(turnedOver(0, 0, 0.5)).toMatchObject({ angle: 0, lift: 0 });
+    const over = turnedOver(1, 0, 0.5);
+    expect(over.angle).toBeCloseTo(Math.PI, 9);
+    expect(over.lift).toBeCloseTo(0, 9);
+  });
+
+  it("lifts the paper half way so its edge swings over the table, not through it", () => {
+    expect(turnedOver(0.5, 0, 0.5).lift).toBeCloseTo(0.5, 9);
+  });
+
+  it("turns about the line that runs up the screen, however the view is twisted", () => {
+    for (const azimuth of [0, 0.7, -2]) {
+      const { axis } = turnedOver(0.5, azimuth, 0.5);
+      const up = viewOf({ ...home, azimuth }).up!;
+      expect(axis.x).toBeCloseTo(up.x, 9);
+      expect(axis.z).toBeCloseTo(up.z, 9);
+    }
   });
 });
