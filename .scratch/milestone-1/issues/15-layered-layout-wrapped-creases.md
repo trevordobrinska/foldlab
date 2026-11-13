@@ -1,6 +1,6 @@
 # The layered layout breaks where a crease wraps other layers: the cup's Step 4
 
-Status: needs-triage
+Status: resolved
 Type: task
 Blocked by: 14
 
@@ -81,3 +81,5 @@ The largest move between samples is 0.0046 in all four, as before. Steps 1 to 3 
 - Step 4 back flap, turned over or tilted: the same, and look at the cup's two bottom corners during the Fold for the squeeze described above. If it shows, say so; it is the one thing here I would expect to be visible.
 - Both orders of Step 4 (front then back, back then front).
 - Steps 1 to 3 should look as they did.
+
+**2026-11-13, Dad, on the iPad after the fix** (`milestone-1` at `373fa1b`), asked to look at Step 4 at rest, the front flap through the whole drag, and the back flap from the flipped side: "that was perfect". He did not mention the squeeze at the bottom corners. Resolved.

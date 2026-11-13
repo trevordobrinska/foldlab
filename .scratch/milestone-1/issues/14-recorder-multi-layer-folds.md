@@ -1,6 +1,6 @@
 # The recorder gets multi-layer Folds wrong: the cup's Steps 2 to 4
 
-Status: needs-triage
+Status: resolved
 Type: task
 Blocked by: 07
 
@@ -115,3 +115,5 @@ Where the flap is when nearly down, in layer gaps: in Step 2 at snapshot 100 the
 - The last twenty-fifth of each plain Fold's drag now holds the finished paper still, where before the layers settled by half a gap. Say if the end of the drag feels dead.
 
 **2026-11-13, Dad, on the iPad after fix 1** (`milestone-1` at `1b16fbb`): Steps 2 and 3 look good. Step 4 still breaks down. That remainder is ticket 15.
+
+**2026-11-13, Dad, on the iPad after ticket 15's layout fix** (`milestone-1` at `373fa1b`): "that was perfect". Step 4 no longer breaks down. Both faults found here are fixed: the turn (fix 1 above) and the layout (ticket 15). Resolved.
