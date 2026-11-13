@@ -13,13 +13,16 @@ import { RECORDING_VERSION, type Recording } from "../motion/recording";
 
 export const MODEL_VERSION = 1;
 
+/** The Fold types a Model can carry: the one list the format, its checks and Import's answer format all read. */
+export const FOLD_CALL_TYPES = ["valley", "mountain"] as const;
+
 /**
  * One Fold as a call to the engine, described as he sees the Paper (x right,
  * y up) at the moment it is made. The Fold types the engine can replay and
  * the recorder can record for a Model today: valley and mountain.
  */
 export type FoldCall = {
-  type: "valley" | "mountain";
+  type: (typeof FOLD_CALL_TYPES)[number];
   /** The fold line. */
   line: Line;
   /** A point on the flap to fold. */
@@ -33,7 +36,7 @@ export interface ModelSource {
   name: string;
 }
 
-/** The sheet a Model starts from. */
+/** The Paper a Model starts from: its shape and its two sides. */
 export interface ModelPaper {
   width: number;
   height: number;
@@ -86,7 +89,7 @@ export interface ModelFold {
 }
 
 export interface ModelStep {
-  /** The Step's instruction, in FoldLab's own words. */
+  /** The Step's text: what he reads under the paper, in FoldLab's own words. */
   text: string;
   /** The Step's Folds, in the order the Source gives them (the written order). */
   folds: ModelFold[];
@@ -103,6 +106,9 @@ export interface Model {
   paper: ModelPaper;
   steps: ModelStep[];
 }
+
+/** How many Folds a Model has, over all its Steps. */
+export const foldCount = (model: Model): number => model.steps.reduce((sum, step) => sum + step.folds.length, 0);
 
 /** A Model before the engine has replayed it: what Import gets from a Source. */
 export interface ModelRecipe {
@@ -145,8 +151,9 @@ export function parseRecipe(data: unknown): Parsed<ModelRecipe> {
 
 // --- The checks -------------------------------------------------------------
 
-type Json = Record<string, unknown>;
-const isObject = (x: unknown): x is Json => typeof x === "object" && x !== null && !Array.isArray(x);
+/** Data of unknown shape that is at least an object (not an array, not null). */
+export type Json = Record<string, unknown>;
+export const isObject = (x: unknown): x is Json => typeof x === "object" && x !== null && !Array.isArray(x);
 const isText = (x: unknown): x is string => typeof x === "string" && x.trim().length > 0;
 const isNumber = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x);
 const isPoint = (x: unknown): x is Point => Array.isArray(x) && x.length === 2 && x.every(isNumber);
@@ -182,8 +189,8 @@ function steps(list: unknown, problems: string[], checkFold: (fold: unknown, whe
 
 function call(data: unknown, where: string, problems: string[]) {
   if (!isObject(data)) return void problems.push(`${where} has no engine call`);
-  if (data.type !== "valley" && data.type !== "mountain") {
-    return void problems.push(`${where}: ${JSON.stringify(data.type)} is not a Fold type a Model can hold yet (valley, mountain)`);
+  if (!(FOLD_CALL_TYPES as readonly unknown[]).includes(data.type)) {
+    return void problems.push(`${where}: ${JSON.stringify(data.type)} is not a Fold type a Model can hold yet (${FOLD_CALL_TYPES.join(", ")})`);
   }
   const line = data.line;
   if (!isObject(line) || !isPoint(line.origin) || !isPoint(line.vector)) {

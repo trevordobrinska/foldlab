@@ -26,11 +26,6 @@ export class CalmHelp {
 
   constructor(private readonly host: CalmHelpHost) {}
 
-  /** True while show me is playing the Fold: the paper is not his to pick up until it is back. */
-  get showing(): boolean {
-    return this.playing;
-  }
-
   /** He made a Fold that is not the Step's, and the paper has sprung back. */
   missed(): void {
     this.misses++;

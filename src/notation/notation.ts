@@ -188,3 +188,20 @@ export function arrowOnScreen(from: Pixel, to: Pixel, kind: LineKind): ScreenArr
   const head = kind === "valley" ? [tip, barb(1), barb(-1)] : [tip, barb(-1), back];
   return { curve: [start, bend, tip], head, hollow: kind === "mountain" };
 }
+
+/**
+ * The turn-over symbol, for a Step that turns the paper over: an arrow that
+ * loops once on its way, as SVG path data in a box of `width` x `height`
+ * CSS pixels. The head is drawn as a valley arrow's (filled).
+ */
+export const TURN_OVER = {
+  width: 100,
+  height: 44,
+  shaft: "M4 34 C 24 34 38 32 50 24 C 62 16 58 2 47 4 C 36 6 36 22 50 30 C 60 35 72 34 84 34",
+  head: "M100 34 L80 26 L80 42 Z",
+} as const;
+
+/** Where the turn-over symbol's box goes (its top left) on an overlay of that size: beside the paper, low on the right, clear of the buttons. */
+export function turnOverPlace(width: number, height: number): Pixel {
+  return { x: width - 136, y: height - 64 };
+}

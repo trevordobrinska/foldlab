@@ -12,7 +12,7 @@ import { fold, newPaper, type Paper, type Point } from "../engine/paper";
 import { record } from "../motion/record";
 import type { Recording } from "../motion/recording";
 import { steppedPaper } from "../view/shape";
-import { arrowOnScreen, notationOf, withoutRepeats, type FoldNotation } from "./notation";
+import { arrowOnScreen, notationOf, TURN_OVER, turnOverPlace, withoutRepeats, type FoldNotation } from "./notation";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const cup1 = JSON.parse(readFileSync(resolve(here, "../recordings/cup-1.json"), "utf8")) as Recording;
@@ -154,5 +154,75 @@ describe("the fold arrow on screen", () => {
 
   it("is nothing for a point that lands where it began", () => {
     expect(arrowOnScreen(from, from, "valley")).toBeUndefined();
+  });
+});
+
+describe("the turn-over symbol", () => {
+  type P = { x: number; y: number };
+  const pointsOf = (d: string): P[] => {
+    const n = d.match(/-?\d+(\.\d+)?/g)!.map(Number);
+    return Array.from({ length: n.length / 2 }, (_, i) => ({ x: n[i * 2], y: n[i * 2 + 1] }));
+  };
+  /** The shaft (a move, then cubic curves) as a run of points along it. */
+  const along = (d: string): P[] => {
+    const p = pointsOf(d);
+    const run: P[] = [p[0]];
+    for (let i = 0; i + 3 < p.length; i += 3) {
+      const [a, b, c, e] = p.slice(i, i + 4);
+      for (let s = 1; s <= 24; s++) {
+        const t = s / 24;
+        const u = 1 - t;
+        const at = (k: "x" | "y") => u * u * u * a[k] + 3 * u * u * t * b[k] + 3 * u * t * t * c[k] + t * t * t * e[k];
+        run.push({ x: at("x"), y: at("y") });
+      }
+    }
+    return run;
+  };
+  const turn = (a: P, b: P, c: P) => Math.sign((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x));
+  const cross = (a: P, b: P, c: P, d: P) => turn(a, b, c) * turn(a, b, d) < 0 && turn(c, d, a) * turn(c, d, b) < 0;
+
+  it("is an arrow that loops once on its way", () => {
+    const run = along(TURN_OVER.shaft);
+    let crossings = 0;
+    for (let i = 0; i + 1 < run.length; i++) {
+      for (let j = i + 2; j + 1 < run.length; j++) if (cross(run[i], run[i + 1], run[j], run[j + 1])) crossings++;
+    }
+    expect(crossings).toBe(1);
+    // It sets off and arrives level, travelling to the right.
+    expect(run[run.length - 1].y).toBe(run[0].y);
+    expect(run[run.length - 1].x).toBeGreaterThan(run[0].x);
+  });
+
+  it("has a closed head at the end of the shaft, pointing the way the shaft travels", () => {
+    const shaft = pointsOf(TURN_OVER.shaft);
+    const end = shaft[shaft.length - 1];
+    const [tip, barb1, barb2] = pointsOf(TURN_OVER.head);
+    expect(TURN_OVER.head.trim().endsWith("Z")).toBe(true);
+    // The tip is ahead of the shaft's end, level with it; the barbs are behind it, one each side.
+    expect(tip).toEqual({ x: TURN_OVER.width, y: end.y });
+    expect(tip.x).toBeGreaterThan(end.x);
+    expect(barb1.x).toBeLessThanOrEqual(end.x);
+    expect(barb2.x).toBe(barb1.x);
+    expect(Math.sign(barb1.y - end.y)).toBe(-Math.sign(barb2.y - end.y));
+  });
+
+  it("is drawn within its own box", () => {
+    for (const p of [...along(TURN_OVER.shaft), ...pointsOf(TURN_OVER.head)]) {
+      expect(p.x).toBeGreaterThanOrEqual(0);
+      expect(p.x).toBeLessThanOrEqual(TURN_OVER.width);
+      expect(p.y).toBeGreaterThanOrEqual(0);
+      expect(p.y).toBeLessThanOrEqual(TURN_OVER.height);
+    }
+  });
+
+  it("sits beside the paper, low on the right and wholly on the page, whichever way the iPad is held", () => {
+    for (const [width, height] of [[1180, 700], [820, 1000]]) {
+      const place = turnOverPlace(width, height);
+      // In the right-hand third and the bottom fifth, with a margin left to the edges.
+      expect(place.x).toBeGreaterThan((width * 2) / 3);
+      expect(place.y).toBeGreaterThan((height * 4) / 5);
+      expect(place.x + TURN_OVER.width).toBeLessThanOrEqual(width - 16);
+      expect(place.y + TURN_OVER.height).toBeLessThanOrEqual(height - 16);
+    }
   });
 });

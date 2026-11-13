@@ -37,9 +37,9 @@ export function replay(paper: Paper, call: FoldCall): FoldResult {
 export function buildModel(recipe: unknown): Built {
   const parsed = parseRecipe(recipe);
   if (!parsed.ok) return { ok: false, reason: "invalid", problems: parsed.problems };
-  const { id, name, source, paper: sheet, steps: recipeSteps } = parsed.value;
+  const { id, name, source, paper: modelPaper, steps: recipeSteps } = parsed.value;
 
-  let paper = newPaper({ width: sheet.width, height: sheet.height });
+  let paper = newPaper({ width: modelPaper.width, height: modelPaper.height });
   const steps: ModelStep[] = [];
   for (const [s, step] of recipeSteps.entries()) {
     // The written order: this is the replay that decides whether the Model is good.
@@ -61,7 +61,7 @@ export function buildModel(recipe: unknown): Built {
     for (const { fold: f, after, recording } of otherOrders(step.folds, written)) folds[f].recordings.push({ after, recording });
     steps.push({ text: step.text, folds, frame: frameOf(paper) });
   }
-  return { ok: true, model: { version: MODEL_VERSION, id, name, source: { name: source.name }, paper: { ...sheet }, steps } };
+  return { ok: true, model: { version: MODEL_VERSION, id, name, source: { name: source.name }, paper: { ...modelPaper }, steps } };
 }
 
 /**

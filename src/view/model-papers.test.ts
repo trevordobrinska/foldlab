@@ -21,7 +21,7 @@ const footprint = (triangles: Float32Array) => {
 };
 
 describe("a Model's papers", () => {
-  it("puts the middle of the fresh sheet at the middle of the table", () => {
+  it("puts the middle of the unfolded Paper at the middle of the table", () => {
     const corners = footprint(papers.of(folds[0]).at(0).triangles);
     for (const corner of ["-0.500 -0.500", "0.500 -0.500", "0.500 0.500", "-0.500 0.500"]) expect(corners).toContain(corner);
   });
@@ -39,7 +39,7 @@ describe("a Model's papers", () => {
     }
   });
 
-  it("reaches as far as the fresh sheet does, over every Fold", () => {
+  it("reaches as far as the unfolded Paper does, over every Fold", () => {
     expect(papers.extent.x).toBeCloseTo(0.5, 3);
     expect(papers.extent.z).toBeCloseTo(0.5, 3);
   });

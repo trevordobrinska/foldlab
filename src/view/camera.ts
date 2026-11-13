@@ -6,6 +6,7 @@
 // three.js side view.ts.
 
 import { fitFov, type View } from "./frame";
+import type { TablePoint } from "./pointer";
 
 export interface Orbit {
   /** Turn about the table's vertical, radians: 0 looks from his side, increasing turns the paper clockwise on screen. */
@@ -15,14 +16,14 @@ export interface Orbit {
   /** From the target, in paper units (the paper is about one unit across). */
   distance: number;
   /** Where on the table the camera looks: x right, z toward him, from the paper's centre. */
-  target: { x: number; z: number };
+  target: TablePoint;
 }
 
 export interface Limits {
   /** The closest and the furthest the camera may be. */
   distance: [number, number];
   /** How far the target may stray from the paper's centre: half the paper's extent, so the paper can't be lost off screen. */
-  extent: { x: number; z: number };
+  extent: TablePoint;
 }
 
 /** The vertical field of view (degrees) of the square frame. */
@@ -33,7 +34,7 @@ export const FLAT = Math.PI / 2;
 export const TILTED = (52 * Math.PI) / 180;
 
 /** The view that fits a paper of the given extent in the square frame, flat, with room round it. */
-export function fitting(extent: { x: number; z: number }): { orbit: Orbit; limits: Limits } {
+export function fitting(extent: TablePoint): { orbit: Orbit; limits: Limits } {
   const half = Math.max(extent.x, extent.z, 0.25);
   // The paper's half extent fills a square of FOV degrees at this distance, with a margin of a third.
   const distance = (half * 1.35) / Math.tan((FOV * Math.PI) / 360);

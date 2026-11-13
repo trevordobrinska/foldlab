@@ -122,7 +122,7 @@ const player: PlayerPage = playerPage(model, papers, {
 
 const help: HelpPage = helpPage({
   steps: {
-    folds: () => player.offers().map((offer) => papers.of(offer.recording)),
+    folds: () => player.foldsToMake(),
     showMe: (done) => player.showMe(done),
   },
   pointer,

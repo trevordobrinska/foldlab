@@ -44,7 +44,7 @@ const STILL = 0.02;
 /** A finger that moves less than this (CSS pixels) only touched the paper. */
 export const TOUCH_SLOP = 10;
 
-const onTable = (a: { x: number; z: number }, b: { x: number; z: number }) => Math.hypot(a.x - b.x, a.z - b.z);
+const onTable = (a: TablePoint, b: TablePoint) => Math.hypot(a.x - b.x, a.z - b.z);
 
 /** How far the held point ends from where it began, seen from above. */
 export function travel(hold: Hold): number {
@@ -141,10 +141,10 @@ export interface FoldGestureHost {
 
 /**
  * One finger's fold, from touch to settled. Feed it canvas pixels (from the
- * canvas's top left): `down` says whether the finger picked the paper up
- * (false: the touch is the background's), then `move` and `up`; `cancel`
- * lets the paper go without a miss (a second finger arrived, or the touch
- * was taken away).
+ * canvas's top left): `down` picks the paper up if the finger is on it
+ * (`busy` then says so; otherwise the touch is the background's), then
+ * `move` and `up`; `cancel` lets the paper go without a miss (a second
+ * finger arrived, or the touch was taken away).
  */
 export class FoldGesture {
   private hold: Hold | undefined;
@@ -162,13 +162,13 @@ export class FoldGesture {
     return this.hold !== undefined || this.settling;
   }
 
-  down(px: number, py: number): boolean {
-    if (this.busy) return false;
+  down(px: number, py: number): void {
+    if (this.busy) return;
     const pointer = this.host.pointer();
     const touch = pointer.table(px, py);
-    if (!touch) return false;
+    if (!touch) return;
     const hold = holdOf(this.host.folds(), touch);
-    if (!hold) return false;
+    if (!hold) return;
     this.hold = hold;
     this.progress = 0;
     this.moved = false;
@@ -177,7 +177,6 @@ export class FoldGesture {
     this.offset = { x: px - held.x, y: py - held.y };
     // Picking up sampled the Recording through the paper's buffers: put it back as it lies.
     this.host.show(hold.fold, 0);
-    return true;
   }
 
   move(px: number, py: number): void {

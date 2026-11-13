@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import type { Recording } from "../motion/recording";
 import type { Model } from "./model";
-import { made, opened, progressOf, shown, startedAgain, steppedBack, toMake, undoing, undone, type Place } from "./player";
+import { afterFold, opened, progressOf, shown, startedAgain, steppedBack, toMake, undoing, type Place } from "./player";
 
 // The player never looks inside a Recording, so names stand in for them here;
 // the real cup is walked in src/library/library.test.ts.
@@ -30,7 +30,7 @@ const model = {
 const fresh = opened(model, null);
 /** The Place after making these Folds, each named by its place in its Step. */
 function after(...folds: number[]): Place {
-  return folds.reduce((place, fold) => made(model, place, fold), fresh);
+  return folds.reduce((place, fold) => afterFold(model, place, fold), fresh);
 }
 
 describe("opening a Model", () => {
@@ -68,8 +68,8 @@ describe("making Folds", () => {
     expect(toMake(model, after(0, 0))).toEqual([{ fold: 0, recording: "c1" }]);
     expect(toMake(model, after(0, 0, 0))).toEqual([{ fold: 1, recording: "c2" }]);
     // A Fold that is not offered is not made.
-    expect(made(model, after(0, 0), 1)).toEqual(after(0, 0));
-    expect(made(model, after(0, 0, 0), 0)).toEqual(after(0, 0, 0));
+    expect(afterFold(model, after(0, 0), 1)).toEqual(after(0, 0));
+    expect(afterFold(model, after(0, 0, 0), 0)).toEqual(after(0, 0, 0));
   });
 
   it("offers symmetric Folds in any order, each with the Recording for that order", () => {
@@ -78,8 +78,8 @@ describe("making Folds", () => {
       { fold: 0, recording: "d1 first" },
       { fold: 1, recording: "d2 first" },
     ]);
-    expect(toMake(model, made(model, step4, 1))).toEqual([{ fold: 0, recording: "d1 second" }]);
-    expect(toMake(model, made(model, step4, 0))).toEqual([{ fold: 1, recording: "d2 second" }]);
+    expect(toMake(model, afterFold(model, step4, 1))).toEqual([{ fold: 0, recording: "d1 second" }]);
+    expect(toMake(model, afterFold(model, step4, 0))).toEqual([{ fold: 1, recording: "d2 second" }]);
   });
 
   it("finishes the Model with its last Fold, whichever that is, and shows that Fold made", () => {
@@ -92,7 +92,7 @@ describe("making Folds", () => {
   it("has nothing more to make once every Fold is made", () => {
     const end = after(0, 0, 0, 1, 0, 1);
     expect(toMake(model, end)).toEqual([]);
-    expect(made(model, end, 0)).toEqual(end);
+    expect(afterFold(model, end, 0)).toEqual(end);
   });
 });
 
@@ -109,15 +109,13 @@ describe("going back", () => {
 
   it("there is nothing to undo on a Model not yet begun", () => {
     expect(undoing(model, fresh)).toBeUndefined();
-    expect(undone(model, fresh)).toEqual(fresh);
-    expect(undone(model, after(0, 0, 0))).toEqual(after(0, 0));
   });
 
   it("step back returns to the start of this Step, or of the Step before when already there", () => {
-    expect(steppedBack(model, after(0, 0, 0))).toEqual({ step: 2, made: [], finished: false });
-    expect(steppedBack(model, after(0, 0))).toEqual({ step: 1, made: [], finished: false });
-    expect(steppedBack(model, after(0, 0, 0, 1, 0, 1))).toEqual({ step: 3, made: [], finished: true });
-    expect(steppedBack(model, fresh)).toEqual(fresh);
+    expect(steppedBack(after(0, 0, 0))).toEqual({ step: 2, made: [], finished: false });
+    expect(steppedBack(after(0, 0))).toEqual({ step: 1, made: [], finished: false });
+    expect(steppedBack(after(0, 0, 0, 1, 0, 1))).toEqual({ step: 3, made: [], finished: true });
+    expect(steppedBack(fresh)).toEqual(fresh);
   });
 
   it("starting again goes to the first Step and keeps the Model finished", () => {
@@ -138,7 +136,7 @@ describe("what is saved", () => {
   });
 
   it("keeps the checkmark while he folds a finished Model again", () => {
-    const again = made(model, made(model, startedAgain(after(0, 0, 0, 1, 0, 1)), 0), 0);
+    const again = afterFold(model, afterFold(model, startedAgain(after(0, 0, 0, 1, 0, 1)), 0), 0);
     expect(progressOf(model, again)).toEqual({ step: 2, finished: true });
   });
 });

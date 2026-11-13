@@ -2,15 +2,12 @@
 // recipe (model.ts) for the builder to replay. Pure: no files, no network,
 // no engine. Dad's computer only; the page never imports this.
 //
-// A Model can hold valley and mountain Folds today (FoldCall). Claude is
+// A Model can hold valley and mountain Folds today (FOLD_CALL_TYPES). Claude is
 // asked to say honestly when a Source needs any other Fold type, turn over
 // and rotate included, rather than to work around it; that Source becomes a
 // Failed import naming the Fold types, to retry when a Model can carry them.
 
-import type { ModelRecipe } from "../model/model";
-
-/** The Fold types a Model can carry (FoldCall["type"]). */
-const SUPPORTED = ["valley", "mountain"] as const;
+import { FOLD_CALL_TYPES, isObject, type Json, type ModelRecipe } from "../model/model";
 
 /** Every other Fold type of the glossary: Claude names them, and Import fails the Source on them. */
 const NOT_YET = [
@@ -66,7 +63,7 @@ export const ANSWER_SCHEMA = {
       items: {
         type: "object",
         properties: {
-          text: { type: "string", description: "The Step's instruction in FoldLab's own words." },
+          text: { type: "string", description: "The Step's text: what he reads under the paper, in FoldLab's own words." },
           folds: {
             type: "array",
             items: {
@@ -74,7 +71,7 @@ export const ANSWER_SCHEMA = {
                 {
                   type: "object",
                   properties: {
-                    type: { type: "string", enum: [...SUPPORTED] },
+                    type: { type: "string", enum: [...FOLD_CALL_TYPES] },
                     line: {
                       type: "object",
                       description: "The fold line, through two points.",
@@ -111,16 +108,16 @@ export const ANSWER_SCHEMA = {
 /** FoldLab's instructions to Claude: the system prompt of every Import request. */
 export const INSTRUCTIONS = `You are reading origami diagrams for FoldLab, an app where a child practises origami on an iPad without paper. The paper on his screen waits for him to make each fold with his finger, so FoldLab needs every Model as an exact sequence of folds that its fold engine can replay. You are given one Source: a diagram, as images or a PDF, that shows how to fold one Model. Turn it into that sequence.
 
-Your answer is checked, not trusted: FoldLab's engine replays every fold you write on a simulated sheet, and the Model is published only if every one of them can be made. A fold placed a little wrong may still replay and then teach him the wrong thing, so work the geometry out exactly (where a corner lands, where a line meets an edge) rather than estimating it from the picture. Use full precision in your numbers; do not round them.
+Your answer is checked, not trusted: FoldLab's engine replays every fold you write on a simulated paper, and the Model is published only if every one of them can be made. A fold placed a little wrong may still replay and then teach him the wrong thing, so work the geometry out exactly (where a corner lands, where a line meets an edge) rather than estimating it from the picture. Use full precision in your numbers; do not round them.
 
 Steps and Folds
 - A Step is one numbered step exactly as the Source shows it. Keep the Source's Steps one for one and in order: do not merge, split, add or skip any.
 - A Step is made of one or more Folds. A Fold is one action on the paper. When a Step says to repeat on the other side or behind, write the repeated folds out as real Folds of that Step.
-- Each Step has a text: the instruction he reads under the paper. Write it in your own words, as one or two short plain sentences a child can follow. Never copy or closely paraphrase wording from the Source: Sources are private and often copyrighted, and FoldLab publishes only its own words.
+- Each Step has a text: the words he reads under the paper. Write it in your own words, as one or two short plain sentences a child can follow. Never copy or closely paraphrase wording from the Source: Sources are private and often copyrighted, and FoldLab publishes only its own words.
 
 The paper and its coordinates
 - The paper starts flat and unfolded. A square is width 1 and height 1; for a rectangle, make the shorter side 1.
-- Points are (x, y) as he sees the paper lying in front of him: x runs to the right and y runs up, the bottom left corner of the unfolded sheet is (0, 0) and the top right corner is (width, height). Draw the Source's first diagram in these coordinates and keep to its orientation.
+- Points are (x, y) as he sees the paper lying in front of him: x runs to the right and y runs up, the bottom left corner of the unfolded paper is (0, 0) and the top right corner is (width, height). Draw the Source's first diagram in these coordinates and keep to its orientation.
 - The paper does not move between Folds: the part that is not folded stays where it is, and later Folds are written in the same coordinates.
 - paper.front is the colour of the side facing up at the start and paper.back the colour of the other side, as #rrggbb. Take them from the Source; if it shows a white side and a coloured side, use #fbf7ee for white.
 
@@ -146,8 +143,6 @@ export type NoRecipe =
   | { kind: "source-unreadable"; message: string }
   | { kind: "unsupported"; message: string; unsupported: { step: number; fold: number; type: string }[] };
 
-type Json = Record<string, unknown>;
-const isObject = (x: unknown): x is Json => typeof x === "object" && x !== null && !Array.isArray(x);
 const pointOf = (p: unknown): unknown => (isObject(p) ? [p.x, p.y] : p);
 
 /**
@@ -166,12 +161,12 @@ export function recipeFrom(answer: unknown, id: string): { ok: true; recipe: unk
 
   const unsupported = steps.flatMap((step, s) =>
     foldsOf(step).flatMap((fold, f) =>
-      isObject(fold) && typeof fold.type === "string" && !(SUPPORTED as readonly string[]).includes(fold.type) ? [{ step: s + 1, fold: f + 1, type: fold.type }] : [],
+      isObject(fold) && typeof fold.type === "string" && !(FOLD_CALL_TYPES as readonly string[]).includes(fold.type) ? [{ step: s + 1, fold: f + 1, type: fold.type }] : [],
     ),
   );
   if (unsupported.length) {
     const named = unsupported.map(({ step, fold, type }) => `Step ${step}, Fold ${fold} is a ${type.replace(/-/g, " ")}`).join("; ");
-    return { ok: false, reason: { kind: "unsupported", message: `${named}. A Model can only carry valley and mountain Folds yet.`, unsupported } };
+    return { ok: false, reason: { kind: "unsupported", message: `${named}. A Model can only carry ${FOLD_CALL_TYPES.join(" and ")} Folds yet.`, unsupported } };
   }
 
   const call = (fold: unknown): unknown => {

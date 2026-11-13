@@ -9,7 +9,7 @@
 import type { Pointer } from "../view/pointer";
 import type { SteppedPaper } from "../view/shape";
 import { notationOf, withoutRepeats, type FoldNotation } from "../notation/notation";
-import { NotationOverlay } from "../notation/overlay";
+import { NotationOverlay, type NotationMode } from "../notation/overlay";
 import { CalmHelp } from "./calm";
 
 /** What this page needs from whoever owns the current Step. */
@@ -40,11 +40,10 @@ export interface HelpPage {
    */
   changed(): void;
   /**
-   * Puts the Notation where the paper is on screen now; call from the page's
-   * draw. "rest": lines and arrows; "folding" (the paper is part way through
-   * the Fold): lines only; "hidden": nothing (the paper is going back).
+   * Puts the Notation where the paper is on screen now, as much of it as
+   * `mode` says; call from the page's draw.
    */
-  draw(mode: "rest" | "folding" | "hidden"): void;
+  draw(mode: NotationMode): void;
 }
 
 export function helpPage({ steps, pointer, busy }: HelpPageOptions): HelpPage {

@@ -56,11 +56,9 @@ describe("calm help", () => {
     for (let i = 0; i < SHOW_ME_AFTER; i++) calm.missed();
     calm.showMe();
     expect(log.plays).toBe(1);
-    expect(calm.showing).toBe(true);
     calm.showMe();
     expect(log.plays).toBe(1);
     played();
-    expect(calm.showing).toBe(false);
   });
 
   it("show me does nothing before it is offered", () => {
@@ -68,7 +66,6 @@ describe("calm help", () => {
     calm.missed();
     calm.showMe();
     expect(log.plays).toBe(0);
-    expect(calm.showing).toBe(false);
   });
 
   it("after show me the Fold is still his to make, and he may watch again", () => {

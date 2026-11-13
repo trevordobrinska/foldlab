@@ -18,14 +18,14 @@ export interface TablePoint {
 }
 
 export interface Pointer {
-  /** The point of the table (at `tableHeight`) under a canvas pixel, or undefined when the pixel looks past the table. */
+  /** The point of the table under a canvas pixel, or undefined when the pixel looks past the table. */
   table(px: number, py: number): TablePoint | undefined;
   /** The canvas pixel a point in the world is drawn at. */
   screen(point: V3): Pixel;
 }
 
 /** The pointer for a camera on a canvas of `width` x `height` CSS pixels (pixels measured from its top left). */
-export function pointerOf(view: View, width: number, height: number, tableHeight = 0): Pointer {
+export function pointerOf(view: View, width: number, height: number): Pointer {
   const w = Math.max(1, width);
   const h = Math.max(1, height);
   const camera = makeCamera(view, w / h);
@@ -38,7 +38,8 @@ export function pointerOf(view: View, width: number, height: number, tableHeight
         .unproject(camera)
         .sub(eye);
       if (scratch.y > -1e-9) return undefined;
-      const t = (tableHeight - eye.y) / scratch.y;
+      // The table is the plane y = 0.
+      const t = -eye.y / scratch.y;
       return { x: eye.x + scratch.x * t, z: eye.z + scratch.z * t };
     },
     screen(point) {

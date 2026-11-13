@@ -6,13 +6,15 @@
 // same way, from what the Claude API returns.
 
 import { buildModel, serializeModel } from "../src/model/build";
-import type { Model } from "../src/model/model";
+import { foldCount, type Model } from "../src/model/model";
 import { RECIPES } from "../src/library/recipes";
 
 export interface BuiltFile {
   /** The Model file's name under src/library/, without `.json`. */
   id: string;
   model: Model;
+  /** How many Folds it has. */
+  folds: number;
   /** The file's contents. */
   json: string;
 }
@@ -27,6 +29,6 @@ export function buildAll(only: string[] = []): BuiltFile[] {
       const built = buildModel(recipe);
       if (!built.ok) throw new Error(`${id} did not build: ${JSON.stringify(built)}`);
       if (built.model.id !== id) throw new Error(`the recipe filed as ${id} calls itself ${built.model.id}`);
-      return { id, model: built.model, json: serializeModel(built.model) };
+      return { id, model: built.model, folds: foldCount(built.model), json: serializeModel(built.model) };
     });
 }

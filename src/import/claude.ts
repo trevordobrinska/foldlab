@@ -8,9 +8,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { AskRequest, ImportClient, Reading, Spend } from "./import";
 
-/** If Claude Opus 5.5 declines a Source, the API retries it on the model Anthropic recommends (a beta). */
-const FALLBACK_BETA = "server-side-fallback-2026-07-01";
-
 /** The request's body, the same for counting its tokens and for sending it. */
 function bodyOf(request: AskRequest) {
   const pages: Anthropic.Beta.BetaContentBlockParam[] = request.pages.map((page) =>
@@ -44,25 +41,23 @@ export function connectClaude(apiKey: string): ImportClient {
     async ask(request): Promise<Reading> {
       try {
         const message = await client.beta.messages
-          .stream({ ...bodyOf(request), max_tokens: request.maxTokens, betas: [FALLBACK_BETA], fallbacks: "default" })
+          // One model, one pass: no fallback. A Source Claude declines is a Failed import, and the cost cap prices one pass (import.ts).
+          .stream({ ...bodyOf(request), max_tokens: request.maxTokens })
           .finalMessage();
         const { usage } = message;
-        const spendOf = (model: string, u: { input_tokens: number; output_tokens: number; cache_creation_input_tokens: number | null; cache_read_input_tokens: number | null }): Spend => ({
-          model,
-          input: u.input_tokens,
-          output: u.output_tokens,
-          cacheWrite: u.cache_creation_input_tokens ?? 0,
-          cacheRead: u.cache_read_input_tokens ?? 0,
-        });
-        // With a fallback, each model that ran is billed at its own price; `iterations` lists them.
-        const iterations = (usage.iterations ?? []).filter((entry) => entry.type === "message" || entry.type === "fallback_message");
-        const spend = iterations.length ? iterations.map((entry) => spendOf(entry.model ?? message.model, entry)) : [spendOf(message.model, usage)];
+        const spend: Spend = {
+          model: message.model,
+          input: usage.input_tokens,
+          output: usage.output_tokens,
+          cacheWrite: usage.cache_creation_input_tokens ?? 0,
+          cacheRead: usage.cache_read_input_tokens ?? 0,
+        };
         const details = message.stop_details;
         return {
           stop: message.stop_reason === "end_turn" ? "end" : (message.stop_reason ?? "unknown"),
           text: message.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join(""),
           refusal: message.stop_reason === "refusal" ? [details?.category, details?.explanation].filter(Boolean).join(": ") : undefined,
-          spend,
+          spend: [spend],
         };
       } catch (error) {
         throw explained(error);

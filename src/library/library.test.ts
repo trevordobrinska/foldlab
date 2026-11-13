@@ -12,7 +12,7 @@ import { recordedFoldTests, sampled, type AcceptanceTest, type RecordedCase } fr
 import { PRECISION } from "../motion/recording";
 import { buildModel, paperOf, replay, serializeModel } from "../model/build";
 import type { Model } from "../model/model";
-import { made, opened, progressOf, shown, toMake } from "../model/player";
+import { afterFold, opened, progressOf, shown, toMake } from "../model/player";
 import { MODEL_IDS, openModel } from "./library";
 import { cupRecipe, RECIPES } from "./recipes";
 
@@ -63,7 +63,7 @@ describe("the cup, folded from the first Step to the last", () => {
       const [next] = toMake(cup, place);
       walked.push(`${place.step + 1}: ${cup.steps[place.step].folds[next.fold].call.type}`);
       expect(shown(cup, place)).toEqual({ recording: next.recording, progress: 0 });
-      place = made(cup, place);
+      place = afterFold(cup, place);
     }
     expect(walked).toEqual(["1: valley", "2: valley", "3: valley", "4: valley", "4: mountain"]);
     expect(place.finished).toBe(true);
@@ -75,9 +75,9 @@ describe("the cup, folded from the first Step to the last", () => {
     const cup = await openModel("cup");
     let place = opened(cup, { step: 3, finished: false });
     expect(toMake(cup, place).map((offer) => offer.fold)).toEqual([0, 1]);
-    place = made(cup, place, 1);
+    place = afterFold(cup, place, 1);
     expect(toMake(cup, place).map((offer) => offer.fold)).toEqual([0]);
-    expect(made(cup, place, 0).finished).toBe(true);
+    expect(afterFold(cup, place, 0).finished).toBe(true);
   });
 
   it("holds after each Step the Paper the engine has when the Step's calls are replayed", async () => {

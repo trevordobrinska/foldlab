@@ -54,7 +54,8 @@ function page(folds: SteppedPaper[], orbit: Orbit = flat) {
   const drag = (from: [number, number], to: [number, number], steps = 20) => {
     const a = over(...from);
     const b = over(...to);
-    const held = gesture.down(a.x, a.y);
+    gesture.down(a.x, a.y);
+    const held = gesture.busy;
     for (let i = 1; i <= steps; i++) gesture.move(a.x + ((b.x - a.x) * i) / steps, a.y + ((b.y - a.y) * i) / steps);
     gesture.up(b.x, b.y);
     return held;
@@ -150,7 +151,8 @@ describe("one finger folds the paper: drag a point to where it lands", () => {
     const { gesture, over, last, pointer } = page([steppedPaper(cup1)]);
     const paper = steppedPaper(cup1);
     const start = over(1, 1);
-    expect(gesture.down(start.x, start.y)).toBe(true);
+    gesture.down(start.x, start.y);
+    expect(gesture.busy).toBe(true);
     for (const along of [0.25, 0.5, 0.75]) {
       const finger = over(1 - along, 1 - along);
       gesture.move(finger.x, finger.y);
@@ -219,7 +221,8 @@ describe("one finger folds the paper: drag a point to where it lands", () => {
   it("leaves a touch on the background to the view", () => {
     const { gesture, over, log } = page([steppedPaper(cup1)]);
     const p = over(1.3, 1.3);
-    expect(gesture.down(p.x, p.y)).toBe(false);
+    gesture.down(p.x, p.y);
+    expect(gesture.busy).toBe(false);
     gesture.move(p.x - 300, p.y + 300);
     gesture.up(p.x - 300, p.y + 300);
     expect(log.shown).toEqual([]);
@@ -248,8 +251,9 @@ describe("one finger folds the paper: drag a point to where it lands", () => {
     const pointer = pointerOf(viewOf(flat), SIZE, SIZE);
     let finish: (() => void) | undefined;
     let remaining = [paper];
+    let asked = 0;
     const gesture = new FoldGesture({
-      folds: () => remaining,
+      folds: () => (asked++, remaining),
       pointer: () => pointer,
       show: () => {},
       settle: (_fold, _from, _to, done) => (finish = done),
@@ -260,10 +264,15 @@ describe("one finger folds the paper: drag a point to where it lands", () => {
     gesture.down(corner.x, corner.y);
     gesture.move(landing.x, landing.y);
     gesture.up(landing.x, landing.y);
-    expect(gesture.down(corner.x, corner.y)).toBe(false);
+    // Still settling: a new touch does not ask for the Folds or pick anything up.
+    asked = 0;
+    gesture.down(corner.x, corner.y);
+    expect(asked).toBe(0);
     finish!();
     // Folded: no Fold is left in this Step.
-    expect(gesture.down(corner.x, corner.y)).toBe(false);
+    gesture.down(corner.x, corner.y);
+    expect(asked).toBe(1);
+    expect(gesture.busy).toBe(false);
   });
 
   it("works the same with the view tilted and turned", () => {

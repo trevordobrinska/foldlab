@@ -10,12 +10,11 @@
 //   npm run import -- --cap 2 cup.pdf         a cost cap of $2 for the run (default $5)
 //
 // A Source is one file (pdf, png, jpg, gif, webp) or a folder of them (pages
-// in name order); its name, less the extension, is the Model's id. Like
-// scripts/library.mjs, this borrows Vite's SSR module loader to run our
-// TypeScript.
+// in name order); its name, less the extension, is the Model's id. Our
+// TypeScript is loaded through Vite (scripts/typescript.mjs).
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createServer } from "vite";
+import { withTypeScript } from "./typescript.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
@@ -30,15 +29,9 @@ if (capAt >= 0) {
   args.splice(capAt, 2);
 }
 
-const server = await createServer({
-  configFile: false,
-  logLevel: "error",
-  server: { middlewareMode: true, hmr: false, watch: null },
-  optimizeDeps: { noDiscovery: true, include: [] },
-});
-try {
-  const { runImport } = await server.ssrLoadModule("./src/import/import.ts");
-  const { connectClaude } = await server.ssrLoadModule("./src/import/claude.ts");
+await withTypeScript(async (load) => {
+  const { runImport } = await load("./src/import/import.ts");
+  const { connectClaude } = await load("./src/import/claude.ts");
   const run = await runImport({
     inbox: resolve(root, "import/inbox"),
     library: resolve(root, "src/library"),
@@ -48,13 +41,9 @@ try {
     connect: connectClaude,
     costCap,
   });
-  const tried = run.imported.length + run.failed.length;
-  if (!tried && !run.stopped) console.log("Nothing to import: put a Source in import/inbox/ (or name one to import it again).");
   console.log(`${run.imported.length} imported, ${run.failed.length} Failed imports, ${run.notTried.length} not tried; about $${run.spent.toFixed(2)} spent.`);
   if (run.imported.length) {
     console.log("Now run `npm test` and `npm run dev`, fold each new Model against its Source, then commit src/library/.");
   }
   process.exitCode = run.stopped || run.failed.length ? 1 : 0;
-} finally {
-  await server.close();
-}
+});

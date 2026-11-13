@@ -143,6 +143,9 @@ describe("a Source that cannot be checked all the way through", { timeout: 12000
     expect(record.id).toBe("cup");
     expect(record.source).toBe("cup.png");
     expect(record.reason).toEqual(result.failed[0].reason);
+    // The Model imported earlier is kept, and the record says so.
+    expect(record.earlierModelKept).toBe(true);
+    expect(result.failed[0].earlierModelKept).toBe(true);
     return record as { reason: { kind: string; message: string }; answer: unknown; cost: number };
   }
 
@@ -210,10 +213,10 @@ describe("the cost cap", { timeout: 120000 }, () => {
     expect(DEFAULT_COST_CAP).toBe(5);
   });
 
-  it("prices a run from the tokens Claude reports, at each model's own price", async () => {
+  it("prices a run from the tokens Claude reports; a model whose price is not known is priced at the dearest", async () => {
     const fake = spending([
       { model: "claude-opus-5-5", input: 100_000, output: 10_000, cacheWrite: 0, cacheRead: 0 }, // $0.40 + $0.20
-      { model: "claude-opus-4-8", input: 100_000, output: 10_000, cacheWrite: 0, cacheRead: 0 }, // $0.50 + $0.25
+      { model: "some-other-model", input: 100_000, output: 10_000, cacheWrite: 0, cacheRead: 0 }, // $0.50 + $0.25
     ]);
     const result = await run(folders(), fake, { build: noBuild });
     expect(result.spent).toBeCloseTo(1.35, 6);
@@ -224,7 +227,9 @@ describe("the cost cap", { timeout: 120000 }, () => {
     const at = folders(two);
     // The first Source costs 1,000,000 in at $4 and 100,000 out at $20: $6, over the $5 cap.
     const fake = spending([{ model: "claude-opus-5-5", input: 1_000_000, output: 100_000, cacheWrite: 0, cacheRead: 0 }]);
-    const result = await run(at, fake);
+    const said: string[] = [];
+    const result = await run(at, fake, { log: (line) => said.push(line) });
+    expect(said.join(" ")).toContain("Not tried: b-cup.png");
     expect(fake.asked).toHaveLength(1);
     expect(result.imported.map((m) => m.id)).toEqual(["a-boat"]);
     expect(result.spent).toBeCloseTo(6, 6);
@@ -273,6 +278,19 @@ describe("the API key", () => {
 });
 
 describe("which Sources a run takes", () => {
+  it("says so and succeeds when there is nothing to import, API key or no key", async () => {
+    const imported = folders();
+    writeFileSync(join(imported.library, "cup.recipe.json"), "{}");
+    for (const at of [folders({}), imported]) {
+      const fake = claude(twoSteps());
+      const said: string[] = [];
+      const result = await run(at, fake, { env: {}, log: (line) => said.push(line) });
+      expect(result.stopped).toBeUndefined();
+      expect(said.join(" ")).toContain("Nothing to import");
+      expect(fake.keys).toEqual([]);
+    }
+  });
+
   it("leaves out a Source already imported, unless it is named", async () => {
     const at = folders({ "cup.png": "cup", "boat.png": "boat" });
     writeFileSync(join(at.library, "cup.recipe.json"), "{}");
@@ -297,14 +315,70 @@ describe("which Sources a run takes", () => {
     expect(fake.asked).toEqual([]);
   });
 
-  it("stops, keeping no Failed import, when the Claude API itself fails", async () => {
+  it("when the Claude API fails on a Source that was sent: a Failed import with the reason, its input counted as spent, and the run stops", async () => {
     const at = folders({ "a-boat.png": "boat", "b-cup.png": "cup" });
     const fake = claude(() => {
       throw new Error("529 overloaded");
     });
-    const result = await run(at, fake, { build: noBuild });
+    const said: string[] = [];
+    const result = await run(at, fake, { build: noBuild, log: (line) => said.push(line) });
     expect(result.stopped).toEqual({ why: "claude-api", message: expect.stringContaining("529 overloaded") });
+    expect(result.notTried).toEqual(["b-cup.png"]);
+    expect(said.join(" ")).toContain("Not tried: b-cup.png");
+
+    expect(readdirSync(at.failed)).toEqual(["a-boat.json"]);
+    const record = json(join(at.failed, "a-boat.json"));
+    expect(record.reason.kind).toBe("claude-api");
+    expect(record.reason.message).toContain("529 overloaded");
+    expect(record.reason.message).toContain("not known");
+    // 10,000 tokens in at the dearest price, $5 a million: what was sent before it failed.
+    expect(record.cost).toBeCloseTo(0.05, 6);
+    expect(result.spent).toBeCloseTo(0.05, 6);
+  });
+
+  it("when the Claude API fails before a Source is sent: the run stops, and the Source is not tried, not a Failed import", async () => {
+    const at = folders({ "a-boat.png": "boat", "b-cup.png": "cup" });
+    const fake = claude(twoSteps());
+    const connect = (key: string): ImportClient => ({
+      ...fake.connect(key),
+      countInputTokens: async () => {
+        throw new Error("401 not accepted");
+      },
+    });
+    const result = await run(at, fake, { build: noBuild, connect });
+    expect(result.stopped).toEqual({ why: "claude-api", message: expect.stringContaining("401 not accepted") });
+    expect(fake.asked).toEqual([]);
     expect(result.notTried).toEqual(["a-boat.png", "b-cup.png"]);
+    expect(result.spent).toBe(0);
     expect(readdirSync(at.failed)).toEqual([]);
+  });
+});
+
+describe("writing a Model to the Library", { timeout: 120000 }, () => {
+  /** A Library whose cup recipe cannot be written: a folder is in its place. */
+  function blocked() {
+    const at = folders();
+    mkdirSync(join(at.library, "cup.recipe.json"));
+    writeFileSync(join(at.library, "cup.recipe.json", "in-the-way"), "");
+    return at;
+  }
+
+  it("is all or nothing: when a file cannot be written, the Library is left as it was and the Source is a Failed import", async () => {
+    const at = blocked();
+    const result = await run(at, claude(twoSteps()), { only: ["cup.png"] });
+    expect(result.imported).toEqual([]);
+    expect(readdirSync(at.library)).toEqual(["cup.recipe.json"]);
+    expect(result.failed.map((f) => [f.id, f.reason.kind, f.earlierModelKept])).toEqual([["cup", "library-write", false]]);
+    expect(json(join(at.failed, "cup.json")).reason.message).toContain("could not be written");
+    expect(result.spent).toBeCloseTo(0.14, 6);
+  });
+
+  it("puts back the Model imported earlier when the new one cannot be written whole", async () => {
+    const at = blocked();
+    writeFileSync(join(at.library, "cup.json"), "the cup already in the Library");
+    const result = await run(at, claude(twoSteps()), { only: ["cup.png"] });
+    expect(readdirSync(at.library).sort()).toEqual(["cup.json", "cup.recipe.json"]);
+    expect(readFileSync(join(at.library, "cup.json"), "utf8")).toBe("the cup already in the Library");
+    expect(result.failed.map((f) => [f.reason.kind, f.earlierModelKept])).toEqual([["library-write", true]]);
   });
 });

@@ -7,8 +7,11 @@
 // The geometry is notation.ts (pure, tested); this is only the DOM. The
 // styles, the dash patterns and the one-time pulse are in style.css.
 
-import type { Pointer } from "../view/pointer";
-import { arrowOnScreen, type FoldNotation } from "./notation";
+import type { Pixel, Pointer } from "../view/pointer";
+import { arrowOnScreen, TURN_OVER, turnOverPlace, type FoldNotation } from "./notation";
+
+/** How much of the Notation to draw: "rest", lines and arrows; "folding" (the paper is part way through a Fold), lines only; "hidden", nothing (the paper is going back). */
+export type NotationMode = "rest" | "folding" | "hidden";
 
 const SVG = "http://www.w3.org/2000/svg";
 
@@ -40,10 +43,10 @@ export class NotationOverlay {
       const g = this.add("g", "turn-over");
       const loop = document.createElementNS(SVG, "path");
       loop.setAttribute("class", "fold-arrow");
-      loop.setAttribute("d", "M4 34 C 24 34 38 32 50 24 C 62 16 58 2 47 4 C 36 6 36 22 50 30 C 60 35 72 34 84 34");
+      loop.setAttribute("d", TURN_OVER.shaft);
       const head = document.createElementNS(SVG, "path");
       head.setAttribute("class", "fold-arrow-head valley");
-      head.setAttribute("d", "M100 34 L80 26 L80 42 Z");
+      head.setAttribute("d", TURN_OVER.head);
       g.append(loop, head);
       this.turnOver = g;
     }
@@ -53,7 +56,7 @@ export class NotationOverlay {
    * Puts the Notation where the paper is on screen now. The arrows show only
    * while the paper lies at "rest"; "hidden" shows nothing at all.
    */
-  draw(pointer: Pointer, mode: "rest" | "folding" | "hidden"): void {
+  draw(pointer: Pointer, mode: NotationMode): void {
     this.svg.style.visibility = mode === "hidden" ? "hidden" : "";
     if (mode === "hidden") return;
     const atRest = mode === "rest";
@@ -78,9 +81,9 @@ export class NotationOverlay {
       head.setAttribute("d", `M${arrow.head.map(at).join(" L")} Z`);
     }
     if (this.turnOver) {
-      // Beside the paper, low on the right, clear of the buttons.
       const { width, height } = this.svg.getBoundingClientRect();
-      this.turnOver.setAttribute("transform", `translate(${(width - 136).toFixed(1)} ${(height - 64).toFixed(1)})`);
+      const place = turnOverPlace(width, height);
+      this.turnOver.setAttribute("transform", `translate(${at(place)})`);
     }
   }
 
@@ -105,4 +108,4 @@ export class NotationOverlay {
   }
 }
 
-const at = (p: { x: number; y: number }) => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`;
+const at = (p: Pixel) => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`;

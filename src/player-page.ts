@@ -11,7 +11,7 @@
 // the paper back.
 
 import type { Model } from "./model/model";
-import { made, opened, progressOf, shown, startedAgain, steppedBack, toMake, undoing, type Offer, type Place, type Progress } from "./model/player";
+import { afterFold, opened, progressOf, shown, startedAgain, steppedBack, toMake, undoing, type Offer, type Place, type Progress } from "./model/player";
 import { loadProgress, saveProgress } from "./model/progress";
 import type { ModelPapers } from "./view/model-papers";
 import type { SteppedPaper } from "./view/shape";
@@ -26,10 +26,13 @@ export interface PlayerPage {
   progress: number;
   /** True while Undo or Step back is moving the paper back. */
   readonly goingBack: boolean;
-  /** Where he is in the Model. */
-  place(): Place;
-  /** The Folds he can make now, with their places in the Step: what a gesture is matched against. */
-  offers(): Offer[];
+  /**
+   * The Folds still to make in the current Step, each as its paper lying as
+   * the paper lies at rest: what Notation is drawn for. Unlike `folds()`,
+   * this is the same whether or not the paper is moving, and asking changes
+   * nothing. Empty when every Fold is made.
+   */
+  foldsToMake(): SteppedPaper[];
   /**
    * Show me: plays the first Fold on offer once (made, rested on, and put
    * back as it was), then calls `done`. He then makes it himself. Does
@@ -38,7 +41,11 @@ export interface PlayerPage {
   showMe(done: () => void): void;
 
   // The fold gesture's host (FoldGestureHost), all but the camera.
-  /** The Folds he can make now, each as its paper lying as the paper lies. Empty while the paper is moving or all made. */
+  /**
+   * The Folds his finger can make now: `foldsToMake()`, but empty while the
+   * paper is moving. For the gesture only: `show`, `settle` and `folded`
+   * name a Fold by its place in the list this last returned.
+   */
   folds(): SteppedPaper[];
   /** Draw Fold `fold` (of the last `folds()`) at `progress`. */
   show(fold: number, progress: number): void;
@@ -58,14 +65,15 @@ export interface PlayerPageOptions {
   rested?: () => void;
   /** Debug: open here instead of at the saved progress, and save nothing during this visit. */
   openAt?: Progress;
-  /** How long a button's Fold takes, in milliseconds. */
-  foldMs?: number;
 }
+
+/** How long Undo takes to take a Fold back, in milliseconds. */
+const UNDO_MS = 1100;
 
 /** How long show me takes to make the Fold, rest on it, and put the paper back, in milliseconds. */
 const SHOW_ME = { fold: 1400, rest: 600, back: 700 };
 
-export function playerPage(model: Model, papers: ModelPapers, { animate, redraw, held = () => false, rested, openAt, foldMs = 1100 }: PlayerPageOptions): PlayerPage {
+export function playerPage(model: Model, papers: ModelPapers, { animate, redraw, held = () => false, rested, openAt }: PlayerPageOptions): PlayerPage {
   const title = document.querySelector<HTMLElement>("#step-title")!;
   const text = document.querySelector<HTMLElement>("#step-text")!;
   const undoButton = document.querySelector<HTMLButtonElement>("#undo")!;
@@ -79,6 +87,8 @@ export function playerPage(model: Model, papers: ModelPapers, { animate, redraw,
   /** The Folds last offered to the gesture, which names them by their place in this list. */
   let offered: Offer[] = [];
   let paper = papers.of(shown(model, place).recording);
+  /** True until the Place the page opens at has been shown: that first rest draws nothing and tells nobody (main.ts draws once the canvas is fitted). */
+  let opening = true;
 
   const same = (a: Place, b: Place) => a.step === b.step && a.made.join() === b.made.join();
 
@@ -91,9 +101,10 @@ export function playerPage(model: Model, papers: ModelPapers, { animate, redraw,
     title.textContent = `${model.name}${place.finished ? " ✓" : ""} · Step ${place.step + 1} of ${model.steps.length}`;
     text.textContent = more ? model.steps[place.step].text : "Finished.";
     undoButton.disabled = !undoing(model, place);
-    stepBackButton.disabled = same(steppedBack(model, place), place);
+    stepBackButton.disabled = same(steppedBack(place), place);
     againButton.hidden = more;
     if (!openAt) saveProgress(model.id, progressOf(model, place));
+    if (opening) return;
     rested?.();
     redraw();
   }
@@ -126,8 +137,7 @@ export function playerPage(model: Model, papers: ModelPapers, { animate, redraw,
     get goingBack() {
       return goingBack;
     },
-    place: () => place,
-    offers: () => toMake(model, place),
+    foldsToMake: () => toMake(model, place).map((offer) => papers.of(offer.recording)),
     showMe(done) {
       const [next] = toMake(model, place);
       if (playing || held() || !next || page.progress !== 0) return done();
@@ -158,22 +168,22 @@ export function playerPage(model: Model, papers: ModelPapers, { animate, redraw,
       animate("fold", Math.max(160, (to ? 900 : 600) * Math.abs(to - from)), (k) => (page.progress = from + (to - from) * k), done);
     },
     folded(fold) {
-      place = made(model, place, offered[fold].fold);
+      place = afterFold(model, place, offered[fold].fold);
       rest();
     },
   };
 
   undoButton.addEventListener("click", () => {
-    if (undoing(model, place)) back((then) => unfold(foldMs, then));
+    if (undoing(model, place)) back((then) => unfold(UNDO_MS, then));
   });
 
   // Step back: the Folds come undone one after another, a little quicker
   // than Undo, until the paper is at the start of the Step.
   stepBackButton.addEventListener("click", () => {
-    const target = steppedBack(model, place);
+    const target = steppedBack(place);
     if (same(target, place)) return;
     back((then) => {
-      const next = () => (same(place, target) || !undoing(model, place) ? then() : unfold(foldMs * 0.6, next));
+      const next = () => (same(place, target) || !undoing(model, place) ? then() : unfold(UNDO_MS * 0.6, next));
       next();
     });
   });
@@ -184,12 +194,7 @@ export function playerPage(model: Model, papers: ModelPapers, { animate, redraw,
     rest();
   });
 
-  // The first rest draws nothing and tells nobody: main.ts draws once the canvas is fitted.
-  const [draw, tell] = [redraw, rested];
-  redraw = () => {};
-  rested = undefined;
   rest();
-  redraw = draw;
-  rested = tell;
+  opening = false;
   return page;
 }

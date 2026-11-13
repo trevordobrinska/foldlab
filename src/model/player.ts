@@ -47,9 +47,9 @@ export function opened(model: Model, saved: Progress | null): Place {
   return { step, made: [], finished: saved?.finished === true };
 }
 
-/** The Recording of a Step's Fold made after the Folds in `made`, if the Model has one. */
-function recordingOf(model: Model, step: number, fold: number, made: number[]): Recording | undefined {
-  const state = [...made].sort((a, b) => a - b).join();
+/** The Recording of a Step's Fold made after the Folds in `alreadyMade`, if the Model has one. */
+function recordingOf(model: Model, step: number, fold: number, alreadyMade: number[]): Recording | undefined {
+  const state = [...alreadyMade].sort((a, b) => a - b).join();
   return model.steps[step].folds[fold].recordings.find((r) => r.after.join() === state)?.recording;
 }
 
@@ -66,7 +66,7 @@ export function toMake(model: Model, place: Place): Offer[] {
  * written order). A Fold that is not on offer changes nothing. The Step's
  * last Fold moves on to the next Step; the Model's last Fold finishes it.
  */
-export function made(model: Model, place: Place, fold = toMake(model, place)[0]?.fold): Place {
+export function afterFold(model: Model, place: Place, fold = toMake(model, place)[0]?.fold): Place {
   if (!toMake(model, place).some((offer) => offer.fold === fold)) return place;
   const all = [...place.made, fold];
   if (all.length < model.steps[place.step].folds.length) return { ...place, made: all };
@@ -81,24 +81,21 @@ export function made(model: Model, place: Place, fold = toMake(model, place)[0]?
  * made in the written order. Undefined when nothing has been made.
  */
 export function undoing(model: Model, place: Place): { place: Place; recording: Recording } | undefined {
-  let { step, made } = place;
-  if (!made.length) {
+  let step = place.step;
+  /** The Folds of that Step in the order they were made, the last of them the one to take back. */
+  let folds = place.made;
+  if (!folds.length) {
     if (step === 0) return undefined;
     step -= 1;
-    made = model.steps[step].folds.map((_, f) => f);
+    folds = model.steps[step].folds.map((_, f) => f);
   }
-  const before = made.slice(0, -1);
-  const recording = recordingOf(model, step, made[made.length - 1], before);
+  const before = folds.slice(0, -1);
+  const recording = recordingOf(model, step, folds[folds.length - 1], before);
   return recording && { place: { ...place, step, made: before }, recording };
 }
 
-/** After undo: the last Fold he made is taken back, from this Step or the one before. */
-export function undone(model: Model, place: Place): Place {
-  return undoing(model, place)?.place ?? place;
-}
-
 /** After step back: the start of this Step, or of the Step before when he is already there. */
-export function steppedBack(_model: Model, place: Place): Place {
+export function steppedBack(place: Place): Place {
   if (place.made.length) return { ...place, made: [] };
   return { ...place, step: Math.max(0, place.step - 1) };
 }

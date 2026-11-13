@@ -24,8 +24,8 @@ const landing = (a: Point, b: Point): Line => ({
   origin: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2],
   vector: [a[1] - b[1], b[0] - a[0]],
 });
-/** Corners land where the flap's top edge runs parallel to the cup's bottom. */
-const k = Math.SQRT2 - 1;
+/** How far along an edge a corner lands, so that the flap's top edge runs parallel to the cup's bottom. */
+const cornerLandsAt = Math.SQRT2 - 1;
 
 /**
  * The traditional cup, as the engine's tests fold it: the closed edge from
@@ -44,17 +44,17 @@ export const cupRecipe: ModelRecipe = {
     },
     {
       text: "Fold the bottom right corner across to the left edge.",
-      folds: [{ type: "valley", line: landing([1, 0], [0, k]), flap: [0.9, 0.05] }],
+      folds: [{ type: "valley", line: landing([1, 0], [0, cornerLandsAt]), flap: [0.9, 0.05] }],
     },
     {
       text: "Fold the top left corner across to the bottom edge.",
-      folds: [{ type: "valley", line: landing([0, 1], [k, 0]), flap: [0.05, 0.9] }],
+      folds: [{ type: "valley", line: landing([0, 1], [cornerLandsAt, 0]), flap: [0.05, 0.9] }],
     },
     {
       text: "Fold the front flap of the bottom left corner over the two corners. Fold the back flap behind.",
       folds: [
-        { type: "valley", line: through([0, k], [k, 0]), flap: [0.05, 0.05] },
-        { type: "mountain", line: through([0, k], [k, 0]), flap: [0.05, 0.05] },
+        { type: "valley", line: through([0, cornerLandsAt], [cornerLandsAt, 0]), flap: [0.05, 0.05] },
+        { type: "mountain", line: through([0, cornerLandsAt], [cornerLandsAt, 0]), flap: [0.05, 0.05] },
       ],
     },
   ],

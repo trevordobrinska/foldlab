@@ -13,6 +13,7 @@
 import { apply, determinant } from "../engine/geometry";
 import { playbackOf } from "../motion/playback";
 import type { Recording } from "../motion/recording";
+import type { TablePoint } from "./pointer";
 
 /** How high the middle of the stack sits above the table. */
 const LIFT = 0.01;
@@ -32,7 +33,7 @@ export interface PaperShape {
 
 export interface SteppedPaper {
   /** Half the paper's extent on the table, over the whole Step, from the origin: x right, z toward him. */
-  extent: { x: number; z: number };
+  extent: TablePoint;
   /** The paper at `progress` (0..1). The same buffers are rewritten each call. */
   at(progress: number): PaperShape;
 }
