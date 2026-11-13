@@ -1,5 +1,5 @@
 // Building a Model file: a recipe's engine calls replayed Step by Step, each
-// Fold recorded. The cup recipe (a stand-in until Import, see
+// Fold recorded. The cup recipe (written by hand, not imported: see
 // src/library/recipes.ts) is the worked example.
 
 import { describe, expect, it } from "vitest";

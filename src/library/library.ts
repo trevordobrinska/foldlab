@@ -1,8 +1,8 @@
 // The Library as the page reads it: every Model file published with the app,
 // fetched only when it is opened (each is its own chunk, at a relative URL)
 // and checked before it is played. For now the Library is one Model, the cup,
-// and that cup is a stand-in built from a hand-written recipe (recipes.ts)
-// until Import (ticket 08) supplies the real one.
+// built from a hand-written recipe (recipes.ts) and not by Import: no cup
+// Source can be imported until a Model can carry more Fold types (ticket 16).
 
 import { parseModel, type Model } from "../model/model";
 

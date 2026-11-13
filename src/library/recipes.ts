@@ -8,12 +8,18 @@
 // replayed. It is kept so the Model file can be rebuilt (new Recordings when
 // the recorder improves) without asking the Claude API again.
 //
-// STAND-IN. Nobody writes Models by hand (GLOSSARY, Import): the cup written
-// out below is here only until Dad runs Import on a cup Source, and is the
-// engine tests' cup sequence (src/engine/paper.test.ts, "the cup, Fold by
-// Fold") with Step text added. An imported cup.recipe.json takes its place
-// without any change here; `cupRecipe` and the tests in library.test.ts that
-// are written against its four Steps should then be deleted or rewritten.
+// THE CUP IS WRITTEN BY HAND, NOT IMPORTED: Milestone 1's one exception to
+// "nobody writes Models by hand" (GLOSSARY, Import), by Dad's decision of
+// 2026-11-13 (ticket 16). It is the engine tests' cup sequence
+// (src/engine/paper.test.ts, "the cup, Fold by Fold") with Step text added,
+// and was checked against two real diagrams of the traditional cup: its
+// Folds are theirs, less the Steps a Model cannot carry yet (the pinch mark
+// that finds where the corner lands, and opening the finished cup). The
+// corner lands exactly where the pinch would put it (`cornerLandsAt`). No
+// Source it was checked against could be imported one Step for one. An
+// imported cup.recipe.json would take its place without any change here;
+// `cupRecipe` and the tests in library.test.ts that are written against its
+// four Steps should then be deleted or rewritten.
 
 import type { Line, Point } from "../engine/geometry";
 import type { ModelRecipe } from "../model/model";
