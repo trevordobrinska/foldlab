@@ -100,6 +100,14 @@ export interface SquashSpec {
   flap: Point;
 }
 
+/** A closed sink, described as he sees the Paper. */
+export interface ClosedSinkSpec {
+  /** The line the point is sunk along, in the coordinates he sees: the point beyond it goes down inside. */
+  line: Line;
+  /** A point on the closed point to sink: every layer under it, joined beyond the line, goes in. */
+  point: Point;
+}
+
 /**
  * A flap lifted to stand up before a Fold is pressed, the way diagrams draw
  * a squash: the faces of the Paper before that stand, and the line (as he
@@ -405,6 +413,42 @@ export function squash(paper: Paper, spec: SquashSpec): FoldResult {
   return result.ok ? { ...result, lift: { faces: [a, b], line: spec.line } } : result;
 }
 
+/**
+ * Closed sink: a closed point (every layer under his finger beyond the line,
+ * all joined there) is pushed down inside the model along the line, without
+ * opening the model. Each layer's tip turns over the line onto the inside of
+ * that layer (the side away from the model's outside, which is the side its
+ * nearest layer shows him), so the sunk point is the same closed point turned
+ * inside out: its creases swap mountain and valley, its layers keep their
+ * order, and a folded flap's two layers end up wrapped inside their own sunk
+ * tip. An open sink would open the point out instead.
+ */
+export function closedSink(paper: Paper, spec: ClosedSinkSpec): FoldResult {
+  const c = cut(paper, spec.line, spec.point);
+  if (c === "no-flap") return { ok: false, refusal: "no-flap" };
+
+  // The point: every layer under his finger; closed when they are all joined beyond the line.
+  const under = facesUnder(c, c.facing);
+  const groups = new Set(under.map(c.find));
+  if (under.length < 2 || groups.size !== 1) return { ok: false, refusal: "no-flap" };
+  const inFlap = c.graph.faces_vertices.map((_, f) => c.hasPiece[f] && groups.has(c.find(f)));
+
+  // The model's outside is the side its nearest layer shows him (his finger may be on the point's
+  // centre line, where the layers either side don't overlap: any layer with nothing over it will do).
+  // A folded crease turns the outside over with the face's winding, so every layer's inside is away from that.
+  const nearest = under.find((f) => !under.some((g) => g !== f && (c.height(g, f) ?? 0) * c.facing > 0))!;
+  const outside = c.facing * c.winding[nearest];
+  const towardOf = (f: number) => -outside * c.winding[f];
+  if (blocked(c, inFlap, towardOf)) return { ok: false, refusal: "blocked" };
+
+  // The sunk tips keep their layers' order among themselves and against the layers that stay.
+  return perform(paper, c, inFlap, towardOf, true, {
+    bothMoved: (before) => before,
+    oneMoved: (moved, stayed) => c.height(moved, stayed),
+    invertInside: true,
+  });
+}
+
 interface Landing {
   /** Order after the Fold of two moved faces from different faces before, given their order before. */
   bothMoved?: (before: number, i: number, j: number) => number;
@@ -528,7 +572,7 @@ function perform(
       const faces = nextEdges.faces[e];
       const inside = faces.length === 2 && faces.every((f) => nextInFlap[f]);
       if (inside && newSide[u] >= 0 && newSide[v] >= 0 && Math.max(newSide[u], newSide[v]) > 0) {
-        next.edges_foldAngle[e] = -next.edges_foldAngle[e];
+        next.edges_foldAngle[e] = -next.edges_foldAngle[e] || 0;
         next.edges_assignment[e] = assignmentOf(next.edges_foldAngle[e]);
       }
     });

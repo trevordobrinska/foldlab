@@ -4,7 +4,7 @@
 // made from them (recordings/*.json) and so carries neither the engine nor
 // the physics.
 
-import { fold, insideReverse, newPaper, rotate, squash, type FoldResult, type Lift, type Paper } from "../src/engine/paper";
+import { closedSink, fold, insideReverse, newPaper, rotate, squash, turnOver, type FoldResult, type Lift, type Paper } from "../src/engine/paper";
 
 export interface RecordedStep {
   before: Paper;
@@ -52,8 +52,27 @@ export function squashStep(): RecordedStep {
   return { before, after: rotate(folded(result), -45), lift: lifted(result) };
 }
 
+/**
+ * The closed sink: a preliminary base (the halved triangle's front flap
+ * squashed, then the back flap after a turn over: earlier Steps), its closed
+ * point sunk along the line across the centre line 0.2 from its corners; then
+ * turned on the table (a Step, not a Fold) so the closed point is at the top
+ * and the push comes straight down the screen, the same push as the squash.
+ */
+export function closedSinkStep(): RecordedStep {
+  const hinge = { origin: [0, 1] as [number, number], vector: [1, -1] as [number, number] };
+  const mirrored = { origin: [0.5, 1] as [number, number], vector: [-1, -1] as [number, number] };
+  const triangle = folded(fold(newPaper(), { line: { origin: [0, 0], vector: [1, 1] }, flap: [0.9, 0.1], assignment: "V" }));
+  const halved = folded(fold(triangle, { line: hinge, flap: [0.9, 0.9], assignment: "V", layers: "all" }));
+  const front = folded(squash(halved, { line: hinge, flap: [0.2, 0.6] }));
+  const before = folded(squash(turnOver(front), { line: mirrored, flap: [0.3, 0.6] }));
+  const after = folded(closedSink(before, { line: { origin: [0.2, 0.5], vector: [-1, 1] }, point: [0.04, 0.54] }));
+  return { before, after: rotate(after, -135) };
+}
+
 /** Every Recording the page loads: its data file (under proto-gestures/recordings/) and the Step it records. */
 export const RECORDED_STEPS: Record<string, () => RecordedStep> = {
   "inside-reverse": insideReverseStep,
   squash: squashStep,
+  "closed-sink": closedSinkStep,
 };

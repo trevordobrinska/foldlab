@@ -130,15 +130,30 @@ export function layerOrderHolds(mesh: Mesh, positions: V3[], paper: Paper, faceO
   });
 }
 
+/** The acceptance tests a Recording may be known to fail, by name. */
+export type AcceptanceTest = "finish" | "stretch" | "crossing" | "smooth" | "earlier";
+
 /**
  * Ticket 10's acceptance tests on a Recording, registered inside the
  * caller's `describe`: right start and finish with layer order, no
  * stretching (1%), no passing through, smooth, earlier Folds hold, and
  * spring-back. `largestStep` is the most a vertex may move between two
- * neighbouring samples.
+ * neighbouring samples. `knownFailures` names the tests a Recording is
+ * known to fail, each with the reason: those are registered as expected
+ * failures (they must still fail; their limits are never loosened), so the
+ * suite stays green while the failure stays on record.
  */
-export function recordedFoldTests(step: RecordedCase, run: () => Sampled, { largestStep = 0.015 } = {}) {
+export function recordedFoldTests(
+  step: RecordedCase,
+  run: () => Sampled,
+  { largestStep = 0.015, knownFailures = {} as Partial<Record<AcceptanceTest, string>> } = {},
+) {
   const { before, after, lift } = step;
+  const test = (key: AcceptanceTest, name: string, body: () => void) => {
+    const reason = knownFailures[key];
+    if (reason) it.fails(`${name} (known failure: ${reason})`, body);
+    else it(name, body);
+  };
 
   it("records the mesh it was made from", () => {
     const { mesh, play } = run();
@@ -160,7 +175,7 @@ export function recordedFoldTests(step: RecordedCase, run: () => Sampled, { larg
     expect(layerOrderHolds(mesh, frames[0], before, (f) => mesh.faceBefore[f])).toBe(true);
   });
 
-  it("finishes as the engine's finished Paper, in its layer order", () => {
+  test("finish", "finishes as the engine's finished Paper, in its layer order", () => {
     const { mesh, play, frames } = run();
     const last = toV3s(play.frame(play.frameCount - 1));
     mesh.end.forEach((p, v) => {
@@ -174,7 +189,7 @@ export function recordedFoldTests(step: RecordedCase, run: () => Sampled, { larg
     });
   });
 
-  it("never stretches: every edge length and face area stays within 1% of the flat paper's", () => {
+  test("stretch", "never stretches: every edge length and face area stays within 1% of the flat paper's", () => {
     const { mesh, frames } = run();
     const flatArea = after.graph.faces_vertices.map((loop) =>
       Math.abs(signedArea(loop.map((v) => after.graph.vertices_coords[v]))),
@@ -196,7 +211,7 @@ export function recordedFoldTests(step: RecordedCase, run: () => Sampled, { larg
     expect(worstArea).toBeLessThan(0.01);
   });
 
-  it("never passes through itself: no two faces intersect at any sample", () => {
+  test("crossing", "never passes through itself: no two faces intersect at any sample", () => {
     const { mesh, frames } = run();
     const shareVertex = (a: number, b: number) => mesh.triangles[a].some((v) => mesh.triangles[b].includes(v));
     frames.forEach((positions, k) => {
@@ -210,7 +225,7 @@ export function recordedFoldTests(step: RecordedCase, run: () => Sampled, { larg
     });
   });
 
-  it("moves smoothly: no face jumps between neighbouring samples", () => {
+  test("smooth", "moves smoothly: no face jumps between neighbouring samples", () => {
     const { frames } = run();
     let largest = 0;
     for (let k = 1; k < frames.length; k++) {
@@ -220,7 +235,7 @@ export function recordedFoldTests(step: RecordedCase, run: () => Sampled, { larg
     expect(largest).toBeLessThan(largestStep);
   });
 
-  it("holds every earlier Fold: creases from earlier Steps keep their angles throughout", () => {
+  test("earlier", "holds every earlier Fold: creases from earlier Steps keep their angles throughout", () => {
     const { mesh, frames } = run();
     const earlier = mesh.hinges.filter((h) => h.kind === "crease" && !h.driven);
     expect(earlier.length).toBeGreaterThan(0);

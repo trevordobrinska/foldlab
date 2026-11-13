@@ -7,7 +7,6 @@ import {
   BufferAttribute,
   BufferGeometry,
   DirectionalLight,
-  DoubleSide,
   FrontSide,
   Group,
   HemisphereLight,
@@ -15,7 +14,6 @@ import {
   LineDashedMaterial,
   LineSegments,
   Mesh,
-  MeshBasicMaterial,
   MeshLambertMaterial,
   PCFSoftShadowMap,
   PerspectiveCamera,
@@ -45,11 +43,8 @@ export class PaperView {
   // from one geometry: the front (outside) coloured, the back white.
   private readonly front = new MeshLambertMaterial({ color: SIDE_A, side: FrontSide, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
   private readonly back = new MeshLambertMaterial({ color: SIDE_B, side: BackSide, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
-  // The hidden part shows through as a faint shade, which also deepens a dent.
-  private readonly xrayFace = new MeshBasicMaterial({ color: INK, side: DoubleSide, transparent: true, opacity: 0.1, depthTest: false, depthWrite: false });
   private readonly edge = new LineBasicMaterial({ color: INK, transparent: true, opacity: 0.6 });
   private readonly crease = new LineDashedMaterial({ color: INK, transparent: true, opacity: 0.75, dashSize: 0.028, gapSize: 0.02 });
-  private readonly xrayLine = new LineDashedMaterial({ color: INK, transparent: true, opacity: 0.55, dashSize: 0.01, gapSize: 0.016, depthTest: false, depthWrite: false });
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new WebGLRenderer({ canvas, antialias: true, alpha: true });
@@ -110,27 +105,20 @@ export class PaperView {
 
   private rebuild({ faces, lines }: { faces: Face[]; lines: Segment[] }): void {
     this.clear();
-    const solid = facesGeometry(faces.filter((f) => !f.xray));
+    const solid = facesGeometry(faces);
     const frontMesh = new Mesh(solid, this.front);
     const backMesh = new Mesh(solid, this.back);
     frontMesh.castShadow = backMesh.castShadow = true;
     frontMesh.receiveShadow = backMesh.receiveShadow = true;
     this.paper.add(frontMesh, backMesh);
 
-    const xray = faces.filter((f) => f.xray);
-    if (xray.length) {
-      const ghost = new Mesh(facesGeometry(xray), this.xrayFace);
-      ghost.renderOrder = 2;
-      this.paper.add(ghost);
-    }
-    for (const style of ["edge", "crease", "xray"] as const) {
+    for (const style of ["edge", "crease"] as const) {
       const segments = lines.filter((l) => l.style === style);
       if (!segments.length) continue;
       const geometry = linesGeometry(segments);
-      const material = style === "edge" ? this.edge : style === "crease" ? this.crease : this.xrayLine;
-      const line = new LineSegments(geometry, material);
-      if (style !== "edge") line.computeLineDistances();
-      line.renderOrder = style === "xray" ? 3 : 1;
+      const line = new LineSegments(geometry, style === "edge" ? this.edge : this.crease);
+      if (style === "crease") line.computeLineDistances();
+      line.renderOrder = 1;
       this.paper.add(line);
     }
   }

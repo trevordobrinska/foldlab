@@ -4,11 +4,10 @@
 // (src/motion) on the computer (`npm run record`, from papers.ts) and
 // written to recordings/*.json. Here his finger only plays that back
 // (src/motion/playback.ts), so this page carries no physics and no engine.
-// Pure and DOM-free, like geometry.ts, which still holds the canned sink.
+// Pure and DOM-free, like geometry.ts.
 //
 // The recording's frame is the engine's folded frame; here it is placed on
-// the table like the canned scene: x to the right as he sees it, y up off
-// the table, z toward him.
+// the table: x to the right as he sees it, y up off the table, z toward him.
 //
 // Inside reverse: a square folded in half along its diagonal (an earlier
 // Step), then the corner at the end of the spine reversed in between the two
@@ -17,11 +16,15 @@
 // Squash: a square folded in half along its diagonal, the triangle folded in
 // half again, then the top flap, lifted to stand on its hinge line, pressed
 // flat so its spine lies along the line and it spreads into a square.
+//
+// Closed sink: a preliminary base (earlier Steps), its closed point pushed
+// down inside the model along the line across it, the layers staying wrapped.
 
 import { apply, determinant } from "../src/engine/geometry";
 import { playbackOf } from "../src/motion/playback";
 import type { Recording } from "../src/motion/recording";
 import type { Face, FoldModel, Segment, V3 as World } from "./geometry";
+import closedSinkData from "./recordings/closed-sink.json";
 import insideReverseData from "./recordings/inside-reverse.json";
 import squashData from "./recordings/squash.json";
 
@@ -103,3 +106,4 @@ function recordedFold(data: Recording): RecordedFold {
 
 export const insideReverseFold = recordedFold(insideReverseData as Recording);
 export const squashFold = recordedFold(squashData as Recording);
+export const closedSinkFold = recordedFold(closedSinkData as Recording);

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import closedSink from "../../proto-gestures/recordings/closed-sink.json";
 import insideReverse from "../../proto-gestures/recordings/inside-reverse.json";
 import squash from "../../proto-gestures/recordings/squash.json";
 import { playbackOf } from "./playback";
@@ -62,6 +63,7 @@ describe("playing a Recording", () => {
   it.each([
     ["inside reverse", insideReverse],
     ["squash", squash],
+    ["closed sink", closedSink],
   ])("is fast: a frame of the %s costs under a millisecond", (_name, data) => {
     const play = playbackOf(data as Recording);
     const { triangles } = play.recording;

@@ -72,6 +72,7 @@ describe("the prototype page", () => {
     expect(names).toContain("motion/playback.ts");
     expect(names).toContain("recordings/inside-reverse.json");
     expect(names).toContain("recordings/squash.json");
+    expect(names).toContain("recordings/closed-sink.json");
   });
 
   it("carries no physics: solve.ts, hinge.ts, mesh.ts, motion.ts and record.ts are never imported", () => {

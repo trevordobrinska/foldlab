@@ -6,6 +6,7 @@ import { verticesFlatFoldabilityKawasaki, verticesFlatFoldabilityMaekawa } from 
 import { describe, expect, it } from "vitest";
 import { contains } from "./geometry";
 import {
+  closedSink,
   fold,
   foldAndUnfold,
   insideReverse,
@@ -411,27 +412,36 @@ function expectRabbitEarAgrees(paper: Paper) {
   }
 }
 
-describe("squash", () => {
-  const diagonal = { origin: [0, 0] as Point, vector: [1, 1] as Point };
-  /** The line from the triangle's right-angle corner (0, 1) to the paper's centre: the hinge of the top flap. */
-  const hinge = { origin: [0, 1] as Point, vector: [1, -1] as Point };
-  /** A square folded in half on its diagonal, then the triangle folded in half: four layers on (0,0),(0,1),(0.5,0.5). */
-  const halved = () => {
-    const triangle = folded(fold(newPaper(), { line: diagonal, flap: [0.9, 0.1], assignment: "V" }));
-    return folded(fold(triangle, { line: hinge, flap: [0.9, 0.9], assignment: "V", layers: "all" }));
-  };
-  const near = (a: Point, b: Point) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 1e-9;
-  const angleBetween = (paper: Paper, from: Point, to: Point) => {
-    const { graph } = paper;
-    const e = graph.edges_vertices.findIndex(([u, v]) => {
-      const a = graph.vertices_coords[u];
-      const b = graph.vertices_coords[v];
-      return (near(a, from) && near(b, to)) || (near(a, to) && near(b, from));
-    });
-    expect(e, `edge ${from} to ${to}`).toBeGreaterThanOrEqual(0);
-    return graph.edges_foldAngle[e];
-  };
+const diagonal = { origin: [0, 0] as Point, vector: [1, 1] as Point };
+/** The line from the triangle's right-angle corner (0, 1) to the paper's centre: the hinge of the top flap. */
+const hinge = { origin: [0, 1] as Point, vector: [1, -1] as Point };
+/** A square folded in half on its diagonal, then the triangle folded in half: four layers on (0,0),(0,1),(0.5,0.5). */
+const halved = () => {
+  const triangle = folded(fold(newPaper(), { line: diagonal, flap: [0.9, 0.1], assignment: "V" }));
+  return folded(fold(triangle, { line: hinge, flap: [0.9, 0.9], assignment: "V", layers: "all" }));
+};
+const near = (a: Point, b: Point) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 1e-9;
+/** The fold angle of the crease between two points of the crease pattern. */
+const angleBetween = (paper: Paper, from: Point, to: Point) => {
+  const { graph } = paper;
+  const e = graph.edges_vertices.findIndex(([u, v]) => {
+    const a = graph.vertices_coords[u];
+    const b = graph.vertices_coords[v];
+    return (near(a, from) && near(b, to)) || (near(a, to) && near(b, from));
+  });
+  expect(e, `edge ${from} to ${to}`).toBeGreaterThanOrEqual(0);
+  return graph.edges_foldAngle[e];
+};
+// Squashing the back flap too makes the preliminary base without a collapse.
+// Turned over, the Paper is seen mirrored, so the hinge now runs from (0.5, 1) to (0, 0.5).
+const mirrored = { origin: [0.5, 1] as Point, vector: [-1, -1] as Point };
+/** The preliminary base: closed point B = (0, 0.5), open corners at A = (0.5, 1), side corners (0.5, 0.5) and (0, 1). */
+const preliminary = () => {
+  const front = folded(squash(halved(), { line: hinge, flap: [0.2, 0.6] }));
+  return folded(squash(turnOver(front), { line: mirrored, flap: [0.3, 0.6] }));
+};
 
+describe("squash", () => {
   const base: Point[] = [[0, 0], [0, 1], [0.5, 0.5]];
   const nearHalf: Point[] = [[0, 0.5], [0, 1], [0.5, 0.5]];
   const farHalf: Point[] = [[0, 1], [0.5, 0.5], [0.5, 1]];
@@ -471,15 +481,7 @@ describe("squash", () => {
     expect(result.ok && result.lift).toEqual({ faces: expect.arrayContaining([0, 1]), line: hinge });
   });
 
-  // Squashing the back flap too makes the preliminary base without a collapse,
-  // and squashing one of its flaps gives the known kite. Turned over, the Paper
-  // is seen mirrored, so the hinge now runs from (0.5, 1) to (0, 0.5).
-  const mirrored = { origin: [0.5, 1] as Point, vector: [-1, -1] as Point };
-  const preliminary = () => {
-    const front = folded(squash(halved(), { line: hinge, flap: [0.2, 0.6] }));
-    return folded(squash(turnOver(front), { line: mirrored, flap: [0.3, 0.6] }));
-  };
-
+  // Squashing one flap of the preliminary base gives the known kite.
   it("squashing the back flap as well gives the preliminary base: eight triangles, four on each side", () => {
     const paper = preliminary();
     const faces = seenFaces(paper);
@@ -524,6 +526,118 @@ describe("squash", () => {
     const paper = halved();
     const before = JSON.stringify(paper);
     squash(paper, { line: hinge, flap: [0.2, 0.6] });
+    expect(JSON.stringify(paper)).toBe(before);
+  });
+});
+
+describe("closed sink", () => {
+  // The closed point B = (0, 0.5) of the preliminary base, sunk along the line
+  // perpendicular to its centre line BA, through (0.2, 0.5) and (0, 0.7). The
+  // expected result is standard origami geometry, worked out from the flat
+  // fold: the point is cut off along the line and each layer's tip lands
+  // mirrored across it, so the sunk tip reaches B' = (0.2, 0.7) inside the
+  // model; a tip must lie flat against its own layer on the inside (every
+  // layer at the point reaches the line, so nothing can come between them),
+  // and the only flat-foldable order with every sunk crease swapped is the
+  // closed sink: the model's interior pockets each hold two tips.
+  const sink = { origin: [0.2, 0.5] as Point, vector: [-1, 1] as Point };
+  const point: Point = [0.04, 0.54];
+  const sunk = () => folded(closedSink(preliminary(), { line: sink, point }));
+  const X: Point = [0.1, 0.6];
+  const B2: Point = [0.2, 0.7];
+  const rightBody = shape([X, [0.2, 0.5], [0.5, 0.5], [0.5, 1]]).join();
+  const leftBody = shape([X, [0, 0.7], [0, 1], [0.5, 1]]).join();
+  const rightTip = shape([X, [0.2, 0.5], B2]).join();
+  const leftTip = shape([X, [0, 0.7], B2]).join();
+  const C: Point = [0.5, 0.5];
+  const hasVertex = (paper: Paper, f: number, p: Point) =>
+    paper.graph.faces_vertices[f].some((v) => near(paper.graph.vertices_coords[v], p));
+  /** One side of the model: its faces nearest him first, each a body or a tip, with the rank of the face a tip was cut from. */
+  const side = (paper: Paper, body: string, tip: string) => {
+    const faces = seenFaces(paper);
+    const own = faces.map((_, f) => f).filter((f) => [body, tip].includes(shape(faces[f].polygon).join()));
+    const sorted = own.sort((a, b) => faces[b].layer - faces[a].layer);
+    const kind = (f: number) => (hasVertex(paper, f, C) ? "tip" : "body");
+    // A tip and its body share the two vertices cut on the line.
+    const bodyOf = (t: number) =>
+      sorted.find(
+        (f) => kind(f) === "body" && paper.graph.faces_vertices[t].filter((v) => paper.graph.faces_vertices[f].includes(v)).length === 2,
+      )!;
+    return sorted.map((f) => ({ kind: kind(f), bodyRank: sorted.indexOf(kind(f) === "tip" ? bodyOf(f) : f) }));
+  };
+
+  it("cuts the point off along the line and sinks it to its mirror image inside: eight bodies, eight tips", () => {
+    const faces = seenFaces(sunk());
+    expect(faces).toHaveLength(16);
+    const count = (s: string) => faces.filter((f) => shape(f.polygon).join() === s).length;
+    expect(count(rightBody)).toBe(4);
+    expect(count(leftBody)).toBe(4);
+    expect(count(rightTip)).toBe(4);
+    expect(count(leftTip)).toBe(4);
+  });
+
+  it("the crease pattern: the sink line is a square round the centre, all one way; the creases inside it swap mountain and valley", () => {
+    const paper = sunk();
+    // The square's corners sit on the midlines 0.2 from the centre; its sides cross the diagonals 0.1 out.
+    const ring: Point[] = [[0.7, 0.5], [0.6, 0.6], [0.5, 0.7], [0.4, 0.6], [0.3, 0.5], [0.4, 0.4], [0.5, 0.3], [0.6, 0.4]];
+    ring.forEach((p, i) => expect(angleBetween(paper, p, ring[(i + 1) % ring.length]), `sink crease ${i}`).toBe(180));
+    // Inside: the midline tips were valleys, now mountains; the folded diagonal tips were mountains, now valleys; the flat ones stay flat.
+    for (const m of [[0.7, 0.5], [0.5, 0.7], [0.3, 0.5], [0.5, 0.3]] as Point[]) expect(angleBetween(paper, C, m)).toBe(-180);
+    expect(angleBetween(paper, C, [0.6, 0.4])).toBe(180);
+    expect(angleBetween(paper, C, [0.4, 0.6])).toBe(180);
+    expect(angleBetween(paper, C, [0.6, 0.6])).toBe(0);
+    expect(angleBetween(paper, C, [0.4, 0.4])).toBe(0);
+    // Outside the square nothing changed.
+    expect(angleBetween(paper, [0.7, 0.5], [1, 0.5])).toBe(180);
+    expect(angleBetween(paper, [0.6, 0.4], [1, 0])).toBe(-180);
+    expect(angleBetween(paper, [0.6, 0.6], [1, 1])).toBe(0);
+    expect(creases(paper).sort().join("")).toBe("FFFF" + "MMMMMM" + "VVVVVVVVVVVVVV");
+  });
+
+  it("is flat-foldable at every vertex, and Rabbit Ear agrees with its layer order", () => {
+    const paper = sunk();
+    expectFlatFoldable(paper);
+    expectRabbitEarAgrees(paper);
+  });
+
+  // The orders that make it a closed sink rather than an open one, on each
+  // side of the centre line (four layers: the front sheet, the folded flap's
+  // two layers, the back sheet).
+  it("closed, not open: every sunk tip lies against the inside of its own layer, so the sink creases all turn the same way", () => {
+    for (const [body, tip] of [[rightBody, rightTip], [leftBody, leftTip]]) {
+      const faces = side(sunk(), body, tip);
+      expect(faces.map((f) => f.kind)).toEqual(["body", "tip", "tip", "body", "body", "tip", "tip", "body"]);
+      // The front sheet's tip is just behind it, the back sheet's just in front of it: both inside the model.
+      expect(faces[1].bodyRank).toBe(0);
+      expect(faces[6].bodyRank).toBe(7);
+      // The folded flap's tips lie outside its two layers, wrapping them (an open sink would open the flap's tip out flat instead).
+      expect(faces[2].bodyRank).toBe(3);
+      expect(faces[5].bodyRank).toBe(4);
+    }
+  });
+
+  it("closed, not open: the sunk point keeps its layers in the model's order, front to back, as one point turned inside out", () => {
+    for (const [body, tip] of [[rightBody, rightTip], [leftBody, leftTip]]) {
+      const tips = side(sunk(), body, tip).filter((f) => f.kind === "tip");
+      expect(tips.map((f) => f.bodyRank)).toEqual([0, 3, 4, 7]);
+    }
+  });
+
+  it("refuses when there is no closed point under his finger", () => {
+    expect(closedSink(newPaper(), { line: sink, point })).toEqual({ ok: false, refusal: "no-flap" });
+    // Two layers not joined beyond the line (a book's open edge) are not a closed point.
+    const book = folded(fold(newPaper(), { line: vertical(0.5), flap: [0.75, 0.5], assignment: "V" }));
+    expect(closedSink(book, { line: vertical(0.25), point: [0.1, 0.5] })).toEqual({ ok: false, refusal: "no-flap" });
+  });
+
+  it("refuses when the line misses the point", () => {
+    expect(closedSink(preliminary(), { line: vertical(3), point })).toEqual({ ok: false, refusal: "misses-flap" });
+  });
+
+  it("does not change the Paper it was given", () => {
+    const paper = preliminary();
+    const before = JSON.stringify(paper);
+    closedSink(paper, { line: sink, point });
     expect(JSON.stringify(paper)).toBe(before);
   });
 });
