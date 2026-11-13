@@ -1,23 +1,30 @@
-// The "frame": the 0..100 square that the recognizer, the target overlay and
-// the pointer all share. It is the largest centred square of the canvas
+// The "frame": the 0..100 square of the canvas, its largest centred square
 // (fitted like an SVG viewBox with "meet"), so the same numbers work in
 // landscape and portrait. The camera is fitted so that a fixed square of the
-// 3D view fills that square, which makes a projected point's frame position
+// 3D view fills that square, which keeps the paper the same size on screen
+// however the iPad is held and makes a projected point's frame position
 // independent of the canvas aspect. Pure: no DOM, only three's camera maths.
 
 import { PerspectiveCamera, Vector3 } from "three";
-import type { V3 } from "./geometry";
+
+export interface V3 {
+  x: number;
+  y: number;
+  z: number;
+}
 
 export interface FramePoint {
   x: number;
   y: number;
 }
 
-/** A fixed camera for one Fold: where it sits, what it looks at, and the
- *  vertical field of view (degrees) of the square view it must fit. */
+/** A camera: where it sits, what it looks at, which way is up on screen, and
+ *  the vertical field of view (degrees) of the square view it must fit. */
 export interface View {
   position: V3;
   target: V3;
+  /** Which way is up on screen (any vector not along the line of sight); +y when left out. */
+  up?: V3;
   fov: number;
 }
 
@@ -30,12 +37,14 @@ export function fitFov(fov: number, aspect: number): number {
   return (Math.atan(half) * 360) / Math.PI;
 }
 
-/** Points the camera for a Fold and fits it to the canvas aspect. */
+/** Points the camera and fits it to the canvas aspect. */
 export function applyView(camera: PerspectiveCamera, view: View, aspect: number): void {
   camera.aspect = aspect;
   camera.fov = fitFov(view.fov, aspect);
   camera.near = 0.1;
   camera.far = 20;
+  const up = view.up ?? { x: 0, y: 1, z: 0 };
+  camera.up.set(up.x, up.y, up.z);
   camera.position.set(view.position.x, view.position.y, view.position.z);
   camera.lookAt(view.target.x, view.target.y, view.target.z);
   camera.updateProjectionMatrix();

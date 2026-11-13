@@ -1,6 +1,7 @@
 :root {
   --ink: #2b2540;
-  --paper: #f6efe0;
+  /* The page under the paper: deep enough that the paper's white side shows on it. */
+  --paper: #eee3cc;
   --card: #ffffff;
   --gap: 16px;
   font-family: system-ui, sans-serif;
@@ -8,14 +9,27 @@
   background: var(--paper);
 }
 
+/* Fill the screen, never scroll or zoom while he is folding. */
 body {
   margin: 0;
-  min-height: 100vh;
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 
 #screen {
-  padding: calc(72px + 2 * var(--gap)) var(--gap) var(--gap);
-  text-align: center;
+  box-sizing: border-box;
+  height: 100%;
+  padding: calc(var(--gap) + env(safe-area-inset-top)) calc(var(--gap) + env(safe-area-inset-right))
+    calc(var(--gap) + env(safe-area-inset-bottom)) calc(var(--gap) + env(safe-area-inset-left));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--gap);
 }
 
 /* The house button: same spot on every screen, big enough for small fingers. */
@@ -47,4 +61,66 @@ body {
 #home-button:active {
   transform: translateY(4px);
   box-shadow: 0 0 0 var(--ink);
+}
+
+/* The paper fills the screen; the view follows two fingers on it. */
+#stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  touch-action: none;
+}
+
+#paper {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+/* Big, calm buttons along the bottom, like the house button. */
+#controls {
+  display: flex;
+  gap: var(--gap);
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+#controls button {
+  font: inherit;
+  font-size: 22px;
+  font-weight: 600;
+  min-height: 72px;
+  min-width: 160px;
+  padding: 0 28px;
+  border: 3px solid var(--ink);
+  border-radius: 20px;
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: 0 4px 0 var(--ink);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+#controls button[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--card);
+}
+
+#controls button:active {
+  transform: translateY(4px);
+  box-shadow: 0 0 0 var(--ink);
+}
+
+/* Debug readout (`?stats`): what the last render cost. */
+#stats {
+  position: fixed;
+  right: var(--gap);
+  bottom: var(--gap);
+  margin: 0;
+  font-size: 14px;
+  opacity: 0.6;
 }

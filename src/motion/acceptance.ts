@@ -149,9 +149,12 @@ export function recordedFoldTests(
   { largestStep = 0.015, knownFailures = {} as Partial<Record<AcceptanceTest, string>> } = {},
 ) {
   const { before, after, lift } = step;
+  // A first Step (the Paper still uncreased) has no earlier Folds to hold.
+  const firstStep = before.graph.edges_assignment.every((a) => a === "B");
   const test = (key: AcceptanceTest, name: string, body: () => void) => {
     const reason = knownFailures[key];
     if (reason) it.fails(`${name} (known failure: ${reason})`, body);
+    else if (key === "earlier" && firstStep) it.skip(`${name} (a first Step: none to hold)`, body);
     else it(name, body);
   };
 

@@ -20,7 +20,20 @@
         <path d="M21 39 V29 H27 V39" />
       </svg>
     </a>
-    <main id="screen"></main>
+    <main id="screen">
+      <!-- The paper, drawn in 3D. Two fingers on it move the view. -->
+      <div id="stage">
+        <canvas id="paper" aria-label="Paper"></canvas>
+      </div>
+      <div id="controls">
+        <!-- Tilts the view to show the layers, and back. A camera move only. -->
+        <button id="tilt" type="button" aria-pressed="false">Tilt</button>
+        <!-- Temporary (ticket 04): plays the one recorded Step. Ticket 07's
+             Model player replaces it. -->
+        <button id="fold" type="button">Fold</button>
+      </div>
+      <p id="stats" hidden></p>
+    </main>
     <script type="module" src="./src/main.ts"></script>
   </body>
 </html>

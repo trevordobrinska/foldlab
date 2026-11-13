@@ -21,11 +21,12 @@
 // finished Paper, exactly as the mesh lays them out: the engine stays the
 // source of truth for both ends. This runs on the computer, never on the iPad.
 
+import { EPSILON } from "../engine/geometry";
 import type { Lift, Paper } from "../engine/paper";
 import { buildMesh, type Mesh } from "./mesh";
 import { MIN_FRAMES, RECORDING_VERSION, roundCoordinate, type Recording } from "./recording";
 import { angleAt, initialState, relax, tuning } from "./solve";
-import { length, sub, type V3 } from "./vec3";
+import { add, cross, dot, length, scale, sub, unit, type V3 } from "./vec3";
 
 /** Snapshots over which the hinges are driven from their start angles to their end angles: one per solver step on average. */
 const DRIVEN_FRAMES = Math.round(1 / tuning.step);
@@ -50,8 +51,9 @@ export function record(before: Paper, after: Paper, lift?: Lift): Recording {
   const catchUp = mesh.rigid ? 2 * CATCH_UP_FRAMES : CATCH_UP_FRAMES;
   const driven = FRAMES - 1 - catchUp;
 
+  const axis = plainFoldAxis(mesh);
   const evenly = Array.from({ length: driven }, (_, k) => (k + 1) / driven);
-  const frames = sweep(mesh, byTravel(mesh, sweep(mesh, evenly, catchUp), evenly), catchUp);
+  const frames = axis ? turn(mesh, axis, driven, catchUp) : sweep(mesh, byTravel(mesh, sweep(mesh, evenly, catchUp), evenly), catchUp);
 
   const positions: number[] = [];
   const keep = (frame: V3[]) => frame.forEach((p) => positions.push(roundCoordinate(p[0]), roundCoordinate(p[1]), roundCoordinate(p[2])));
@@ -70,6 +72,88 @@ export function record(before: Paper, after: Paper, lift?: Lift): Recording {
     edges: mesh.edges.map(({ chain, assignment, folded }) => ({ chain: [...chain], assignment, folded })),
     view: [...after.view] as Recording["view"],
   };
+}
+
+/** A line in space: a point on it and its unit direction. */
+interface Axis {
+  point: V3;
+  direction: V3;
+}
+
+/**
+ * The line a plain Fold turns about, if this Fold is one: a valley or
+ * mountain Fold of a flap, which is exactly a rigid turn of the flap about
+ * its line (ticket 10: a Fold that can be solved exactly is). It is one when
+ * every crease this Fold drives lies on one line, every other crease keeps
+ * its angle, and every moving vertex lands at its mirror image across that
+ * line. An inside reverse (its spine turns inside out), a squash (its flap
+ * is lifted) and a sink (creases invert) are not, and go to the solver.
+ */
+function plainFoldAxis(mesh: Mesh): Axis | undefined {
+  if (mesh.rigid) return undefined;
+  const creases = mesh.hinges.filter((h) => h.kind === "crease");
+  const driven = creases.filter((h) => h.driven);
+  if (!driven.length) return undefined;
+  // The layered layouts tilt a facet where layers share a vertex, so an unchanged crease is only nearly so.
+  if (creases.some((h) => !h.driven && Math.abs(h.end - h.start) > 0.1)) return undefined;
+
+  const [a, b] = driven[0].edge.map((v) => mesh.start[v]);
+  const direction = unit([b[0] - a[0], b[1] - a[1], 0]);
+  if (length(direction) < 0.5) return undefined;
+  const offLine = (p: V3) => (p[0] - a[0]) * direction[1] - (p[1] - a[1]) * direction[0];
+  if (driven.some((h) => h.edge.some((v) => Math.abs(offLine(mesh.start[v])) > EPSILON))) return undefined;
+
+  // The moving vertices are mirrored across the line, and the line itself is the flap's own height.
+  const moving = mesh.start.flatMap((p, v) => (Math.hypot(p[0] - mesh.end[v][0], p[1] - mesh.end[v][1]) > EPSILON ? [v] : []));
+  if (!moving.length) return undefined;
+  for (const v of moving) {
+    const s = mesh.start[v];
+    const d = offLine(s);
+    const mirrored = [s[0] - 2 * d * direction[1], s[1] + 2 * d * direction[0]];
+    if (Math.hypot(mirrored[0] - mesh.end[v][0], mirrored[1] - mesh.end[v][1]) > 1e-6) return undefined;
+  }
+  const height = moving.reduce((sum, v) => sum + mesh.start[v][2], 0) / moving.length;
+  return { point: [a[0], a[1], height], direction };
+}
+
+/**
+ * The exact motion of a plain Fold: the flap turned rigidly about its line
+ * through half a turn over the `driven` snapshots (its corner at a steady
+ * speed), then over the `catchUp` snapshots settled into the engine's
+ * finished layout, which differs only by the layers' gaps (the flap now lies
+ * on top of, or beneath, the paper it landed on). Nothing else moves.
+ */
+function turn(mesh: Mesh, axis: Axis, driven: number, catchUp: number): V3[][] {
+  const { point, direction: u } = axis;
+  const moving = mesh.start.flatMap((p, v) => (Math.hypot(p[0] - mesh.end[v][0], p[1] - mesh.end[v][1]) > EPSILON ? [v] : []));
+  const still = mesh.start.flatMap((_, v) => (moving.includes(v) ? [] : [v]));
+  // The flap turns toward the side it lands on: over the paper (a valley) or beneath it (a mountain).
+  const mean = (vs: number[]) => vs.reduce((sum, v) => sum + mesh.end[v][2], 0) / (vs.length || 1);
+  const side = Math.sign(mean(moving) - mean(still)) || 1;
+  // Each moving vertex: its part along the axis, its arm from the axis, and the arm turned a quarter.
+  const arms = moving.map((v) => {
+    const r = sub(mesh.start[v], point);
+    const along = scale(u, dot(r, u));
+    const arm = sub(r, along);
+    return { v, foot: add(point, along), arm, quarter: cross(u, arm) };
+  });
+  const rise = arms.reduce((sum, { quarter }) => sum + quarter[2], 0);
+  const sense = Math.sign(rise) === side ? 1 : -1;
+  const at = (angle: number): V3[] => {
+    const out = mesh.start.map((p) => [...p] as V3);
+    for (const { v, foot, arm, quarter } of arms) {
+      out[v] = add(foot, add(scale(arm, Math.cos(angle)), scale(quarter, sense * Math.sin(angle))));
+    }
+    return out;
+  };
+  const frames: V3[][] = [];
+  for (let k = 1; k <= driven; k++) frames.push(at((Math.PI * k) / driven));
+  const turned = frames[frames.length - 1];
+  for (let j = 1; j <= catchUp; j++) {
+    const t = j / catchUp;
+    frames.push(turned.map((p, v) => add(scale(p, 1 - t), scale(mesh.end[v], t))));
+  }
+  return frames;
 }
 
 /**

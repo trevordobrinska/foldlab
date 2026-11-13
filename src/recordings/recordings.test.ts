@@ -1,13 +1,12 @@
-// The prototype's Recordings: each committed data file is what `npm run
-// record` would write today, and the page that plays them carries no
-// physics.
+// The committed Recordings: each data file is what `npm run record` would
+// write today, and the page that plays them carries no physics.
 
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { record, serializeRecording } from "../src/motion/record";
-import { PRECISION, type Recording } from "../src/motion/recording";
+import { record, serializeRecording } from "../motion/record";
+import { PRECISION, type Recording } from "../motion/recording";
 import { RECORDED_STEPS } from "./papers";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -16,7 +15,7 @@ const read = (file: string) => readFileSync(resolve(here, file), "utf8").replace
 
 describe("the committed Recordings", { timeout: 120000 }, () => {
   it.each(Object.keys(RECORDED_STEPS))("%s.json is fresh: re-recording gives the same file, within the rounding", (name) => {
-    const text = read(`recordings/${name}.json`);
+    const text = read(`${name}.json`);
     const committed = JSON.parse(text) as Recording;
     // Written by the serializer, not by hand.
     expect(serializeRecording(committed)).toBe(text);
@@ -64,15 +63,14 @@ function modulesReachedFrom(entry: string): { files: Set<string>; packages: Set<
   return { files, packages };
 }
 
-describe("the prototype page", () => {
-  const reached = modulesReachedFrom("main.ts");
+describe("the page", () => {
+  const reached = modulesReachedFrom("../main.ts");
   const names = [...reached.files].map((f) => f.replace(/\\/g, "/").split("/").slice(-2).join("/"));
 
-  it("plays the Recordings", () => {
+  it("plays a Recording", () => {
     expect(names).toContain("motion/playback.ts");
-    expect(names).toContain("recordings/inside-reverse.json");
-    expect(names).toContain("recordings/squash.json");
-    expect(names).toContain("recordings/closed-sink.json");
+    expect(names).toContain("recordings/cup-1.json");
+    expect(names).toContain("view/view.ts");
   });
 
   it("carries no physics: solve.ts, hinge.ts, mesh.ts, motion.ts and record.ts are never imported", () => {
@@ -83,7 +81,7 @@ describe("the prototype page", () => {
 
   it("carries no engine: the Papers come from the Recording", () => {
     expect(names).not.toContain("engine/paper.ts");
-    expect(names).not.toContain("proto-gestures/papers.ts");
+    expect(names).not.toContain("recordings/papers.ts");
     expect(reached.packages).not.toContain("rabbit-ear");
     expect(reached.packages).toContain("three");
   });

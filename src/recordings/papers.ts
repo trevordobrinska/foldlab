@@ -1,10 +1,11 @@
-// The engine Papers behind the prototype's recorded Folds: the Paper as it
-// is before each Fold and the engine's Paper after it. Read by `npm run
-// record` and by the tests, never by the page, which loads the Recording
-// made from them (recordings/*.json) and so carries neither the engine nor
-// the physics.
+// The engine Papers behind every recorded Step: the Paper as it is before
+// the Fold and the engine's Paper after it. Read by `npm run record` and by
+// the tests, never by the page, which loads the Recording made from them
+// (*.json beside this file) and so carries neither the engine nor the
+// physics. Until Import (ticket 08) makes Recordings and the Model file
+// (ticket 07) carries them, these are the fixtures.
 
-import { closedSink, fold, insideReverse, newPaper, rotate, squash, turnOver, type FoldResult, type Lift, type Paper } from "../src/engine/paper";
+import { closedSink, fold, insideReverse, newPaper, rotate, squash, turnOver, type FoldResult, type Lift, type Paper, type Point } from "../engine/paper";
 
 export interface RecordedStep {
   before: Paper;
@@ -21,6 +22,19 @@ function folded(result: FoldResult): Paper {
 function lifted(result: FoldResult): Lift {
   if (!result.ok || !result.lift) throw new Error("not a Fold that lifts a flap");
   return result.lift;
+}
+
+const through = (a: Point, b: Point) => ({ origin: a, vector: [b[0] - a[0], b[1] - a[1]] as Point });
+
+/**
+ * The cup's first Step (the sequence is in the engine's tests): the square's
+ * top-right corner folded down to the bottom-left, a valley along the
+ * diagonal from (0, 1) to (1, 0). The page's fixture until the Model player.
+ */
+export function cupStep1(): RecordedStep {
+  const before = newPaper();
+  const after = folded(fold(before, { line: through([0, 1], [1, 0]), flap: [0.9, 0.9], assignment: "V" }));
+  return { before, after };
 }
 
 /**
@@ -45,7 +59,7 @@ export function insideReverseStep(): RecordedStep {
  * screen, the same push as the closed sink, and the flap spreads left and right.
  */
 export function squashStep(): RecordedStep {
-  const hinge = { origin: [0, 1] as [number, number], vector: [1, -1] as [number, number] };
+  const hinge = { origin: [0, 1] as Point, vector: [1, -1] as Point };
   const triangle = folded(fold(newPaper(), { line: { origin: [0, 0], vector: [1, 1] }, flap: [0.9, 0.1], assignment: "V" }));
   const before = folded(fold(triangle, { line: hinge, flap: [0.9, 0.9], assignment: "V", layers: "all" }));
   const result = squash(before, { line: hinge, flap: [0.2, 0.6] });
@@ -60,8 +74,8 @@ export function squashStep(): RecordedStep {
  * and the push comes straight down the screen, the same push as the squash.
  */
 export function closedSinkStep(): RecordedStep {
-  const hinge = { origin: [0, 1] as [number, number], vector: [1, -1] as [number, number] };
-  const mirrored = { origin: [0.5, 1] as [number, number], vector: [-1, -1] as [number, number] };
+  const hinge = { origin: [0, 1] as Point, vector: [1, -1] as Point };
+  const mirrored = { origin: [0.5, 1] as Point, vector: [-1, -1] as Point };
   const triangle = folded(fold(newPaper(), { line: { origin: [0, 0], vector: [1, 1] }, flap: [0.9, 0.1], assignment: "V" }));
   const halved = folded(fold(triangle, { line: hinge, flap: [0.9, 0.9], assignment: "V", layers: "all" }));
   const front = folded(squash(halved, { line: hinge, flap: [0.2, 0.6] }));
@@ -70,8 +84,9 @@ export function closedSinkStep(): RecordedStep {
   return { before, after: rotate(after, -135) };
 }
 
-/** Every Recording the page loads: its data file (under proto-gestures/recordings/) and the Step it records. */
+/** Every committed Recording: its data file (src/recordings/<name>.json) and the Step it records. */
 export const RECORDED_STEPS: Record<string, () => RecordedStep> = {
+  "cup-1": cupStep1,
   "inside-reverse": insideReverseStep,
   squash: squashStep,
   "closed-sink": closedSinkStep,

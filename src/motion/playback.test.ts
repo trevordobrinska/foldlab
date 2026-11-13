@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import closedSink from "../../proto-gestures/recordings/closed-sink.json";
-import insideReverse from "../../proto-gestures/recordings/inside-reverse.json";
-import squash from "../../proto-gestures/recordings/squash.json";
+import closedSink from "../recordings/closed-sink.json";
+import cup1 from "../recordings/cup-1.json";
+import insideReverse from "../recordings/inside-reverse.json";
+import squash from "../recordings/squash.json";
 import { playbackOf } from "./playback";
 import { MIN_FRAMES, RECORDING_VERSION, type Recording } from "./recording";
 
@@ -61,6 +62,7 @@ describe("playing a Recording", () => {
   // the mesh's position buffer, then laying it out triangle by triangle the
   // way the page's geometry is (one flat normal per triangle, so no index).
   it.each([
+    ["cup's first Step", cup1],
     ["inside reverse", insideReverse],
     ["squash", squash],
     ["closed sink", closedSink],

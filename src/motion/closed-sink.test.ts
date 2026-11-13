@@ -17,7 +17,7 @@
 
 import { describe, expect, it } from "vitest";
 import { apply, determinant, invert, type Point } from "../engine/geometry";
-import { closedSinkStep } from "../../proto-gestures/papers";
+import { closedSinkStep } from "../recordings/papers";
 import { recordedFoldTests, SAMPLES, sampled } from "./acceptance";
 import { dihedral } from "./hinge";
 import { LAYER_GAP } from "./mesh";
