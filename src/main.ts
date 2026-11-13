@@ -1,8 +1,8 @@
-// FoldLab: the paper on his iPad. For now (ticket 04) one recorded Step is
-// drawn as real layered paper; two fingers on the background move the view
-// and a button tilts it to show the layers. Folding gestures come with
-// ticket 05, the Model player (which chooses the Step and plays its
-// Recording) with ticket 07. The house button stays in index.html (suite
+// FoldLab: the paper on his iPad. For now one recorded Step is drawn as real
+// layered paper; one finger on the paper folds it (ticket 05: drag a point
+// to where it lands, src/gesture/), two fingers move the view and a button
+// tilts it to show the layers. The Model player (which chooses the Step and
+// plays its Recording) comes with ticket 07. The house button stays in index.html (suite
 // rule 5).
 //
 // This page carries no physics and no engine: a Step's motion was recorded
@@ -10,8 +10,10 @@
 
 import "./style.css";
 import cupStep1 from "./recordings/cup-1.json";
+import { FoldGesture } from "./gesture/drag";
 import type { Recording } from "./motion/recording";
 import { clamp, FLAT, fitting, pinched, pinchOf, TILTED, viewOf, type Orbit, type Touch } from "./view/camera";
+import { pointerOf } from "./view/pointer";
 import { steppedPaper } from "./view/shape";
 import { PaperView } from "./view/view";
 
@@ -93,8 +95,37 @@ function setTilted(next: boolean, ms = 500) {
 }
 tiltButton.addEventListener("click", () => setTilted(!tilted));
 
-// --- Two fingers on the background: pinch to zoom, twist to turn, slide to look ---
-// Every touch on the canvas is "background" until folding gestures (ticket 05).
+// --- One finger (or the Pencil) on the paper folds it ------------------------
+// All the logic is in src/gesture/drag.ts; here it is given the fixture Step
+// and told how to draw. Ticket 07's player supplies the Step's Folds still to
+// make and takes `folded`; ticket 06's calm help takes `missed`.
+
+const gesture = new FoldGesture({
+  folds: () => (folded || progress !== 0 ? [] : [paper]),
+  pointer: () => {
+    const rect = canvas.getBoundingClientRect();
+    return pointerOf(viewOf(orbit), rect.width, rect.height);
+  },
+  show: (_fold, p) => {
+    progress = p;
+    draw();
+  },
+  // A match folds the rest of the way; a miss springs back. Calm, and never looping.
+  settle: (_fold, from, to, done) =>
+    animate("fold", Math.max(160, (to ? 900 : 600) * Math.abs(to - from)), (k) => (progress = from + (to - from) * k), done),
+  folded: () => {
+    folded = true;
+    foldButton.textContent = "Unfold";
+  },
+});
+/** A pointer event's place on the canvas, in CSS pixels from its top left. */
+const onCanvas = (e: PointerEvent): [number, number] => {
+  const rect = canvas.getBoundingClientRect();
+  return [e.clientX - rect.left, e.clientY - rect.top];
+};
+
+// --- Two fingers anywhere: pinch to zoom, twist to turn, slide to look ---------
+// One finger on the background does nothing; a second finger lets the paper go.
 
 const fingers = new Map<number, Touch>();
 const pair = (): [Touch, Touch] | undefined => {
@@ -108,6 +139,8 @@ canvas.addEventListener("pointerdown", (e) => {
   e.preventDefault();
   canvas.setPointerCapture(e.pointerId);
   fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (fingers.size === 1) gesture.down(...onCanvas(e));
+  else gesture.cancel();
 });
 
 canvas.addEventListener("pointermove", (e) => {
@@ -116,6 +149,7 @@ canvas.addEventListener("pointermove", (e) => {
   const before = pair();
   fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   const after = pair();
+  if (fingers.size === 1) gesture.move(...onCanvas(e));
   if (!before || !after) return;
   const rect = canvas.getBoundingClientRect();
   orbit = pinched(orbit, pinchOf(before, after), rect.width, rect.height, limits);
@@ -123,17 +157,20 @@ canvas.addEventListener("pointermove", (e) => {
 });
 
 const lift = (e: PointerEvent) => {
-  fingers.delete(e.pointerId);
+  if (!fingers.delete(e.pointerId)) return;
+  if (e.type === "pointerup") gesture.up(...onCanvas(e));
+  else gesture.cancel();
 };
 canvas.addEventListener("pointerup", lift);
 canvas.addEventListener("pointercancel", lift);
 
 // --- Temporary: play the Step's Recording ----------------------------------
-// Ticket 07's Model player replaces this button; folding gestures (ticket 05)
-// will drive the Recording from his finger instead.
+// Ticket 07's Model player replaces this button. Until then it also unfolds
+// the Fold his finger made, so he can make it again.
 
 let folded = false;
 function setFolded(next: boolean, ms = 1100) {
+  if (gesture.busy) return;
   folded = next;
   foldButton.textContent = folded ? "Unfold" : "Fold";
   const from = progress;
