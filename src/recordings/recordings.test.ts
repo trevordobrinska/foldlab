@@ -42,14 +42,15 @@ function modulesReachedFrom(entry: string): { files: Set<string>; packages: Set<
   const files = new Set<string>();
   const packages = new Set<string>();
   const pending = [resolve(here, entry)];
-  const IMPORT = /^\s*(?:import|export)\s+(?!type\s)[^'";]*?\sfrom\s+["']([^"']+)["']|^\s*import\s+["']([^"']+)["']/gm;
+  // Static imports and re-exports, bare imports, and lazy `import("...")`s (a Model file is fetched that way).
+  const IMPORT = /^\s*(?:import|export)\s+(?!type\s)[^'";]*?\sfrom\s+["']([^"']+)["']|^\s*import\s+["']([^"']+)["']|\bimport\(\s*["']([^"']+)["']\s*\)/gm;
   while (pending.length) {
     const file = pending.pop()!;
     if (files.has(file)) continue;
     files.add(file);
     if (!file.endsWith(".ts")) continue;
     for (const match of readFileSync(file, "utf8").matchAll(IMPORT)) {
-      const spec = match[1] ?? match[2];
+      const spec = match[1] ?? match[2] ?? match[3];
       if (!spec.startsWith(".")) {
         packages.add(spec.split("/")[0]);
         continue;
@@ -67,9 +68,11 @@ describe("the page", () => {
   const reached = modulesReachedFrom("../main.ts");
   const names = [...reached.files].map((f) => f.replace(/\\/g, "/").split("/").slice(-2).join("/"));
 
-  it("plays a Recording", () => {
+  it("plays a Model's Recordings", () => {
     expect(names).toContain("motion/playback.ts");
-    expect(names).toContain("recordings/cup-1.json");
+    expect(names).toContain("library/cup.json");
+    expect(names).toContain("model/player.ts");
+    expect(names).toContain("model/progress.ts");
     expect(names).toContain("view/view.ts");
   });
 
@@ -82,6 +85,9 @@ describe("the page", () => {
   it("carries no engine: the Papers come from the Recording", () => {
     expect(names).not.toContain("engine/paper.ts");
     expect(names).not.toContain("recordings/papers.ts");
+    // Model files are built on the computer (build.ts, from recipes.ts) and only read here.
+    expect(names).not.toContain("model/build.ts");
+    expect(names).not.toContain("library/recipes.ts");
     expect(reached.packages).not.toContain("rabbit-ear");
     expect(reached.packages).toContain("three");
   });

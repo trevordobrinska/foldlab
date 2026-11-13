@@ -104,6 +104,12 @@ export class PaperView {
     if (this.view) applyView(this.camera, this.view, this.width / this.height);
   }
 
+  /** Colours the Paper's two sides (as #rrggbb): the side facing him when the Model starts, and the other. Render afterwards. */
+  colours(front: string, back: string): void {
+    this.front.color.set(front);
+    this.back.color.set(back);
+  }
+
   /** Points the camera. Render afterwards. */
   look(view: View): void {
     this.view = view;

@@ -9,7 +9,8 @@
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "test": "vitest run",
-    "record": "node scripts/record.mjs"
+    "record": "node scripts/record.mjs",
+    "library": "node scripts/library.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

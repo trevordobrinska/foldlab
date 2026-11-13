@@ -37,7 +37,27 @@ export interface SteppedPaper {
   at(progress: number): PaperShape;
 }
 
-export function steppedPaper(recording: Recording): SteppedPaper {
+/** The middle of a Recording's paper as it lies at the start, as he sees it. */
+export function centreOf(recording: Recording): { x: number; y: number } {
+  const { view, vertexCount, positions } = recording;
+  const box = { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity };
+  for (let i = 0; i < vertexCount; i++) {
+    const [sx, sy] = apply(view, [positions[i * 3], positions[i * 3 + 1]]);
+    box.minX = Math.min(box.minX, sx);
+    box.maxX = Math.max(box.maxX, sx);
+    box.minY = Math.min(box.minY, sy);
+    box.maxY = Math.max(box.maxY, sy);
+  }
+  return { x: (box.minX + box.maxX) / 2, y: (box.minY + box.maxY) / 2 };
+}
+
+/**
+ * A Recording's paper for the view. `centre` is the point (as he sees the
+ * Paper) placed at the world's origin: by default the middle of this
+ * Recording's paper at its start; a Model gives every Fold the same one, so
+ * the paper stays where it is from one Fold to the next.
+ */
+export function steppedPaper(recording: Recording, centre = centreOf(recording)): SteppedPaper {
   const play = playbackOf(recording);
   const { view, edges, triangles, vertexCount, frameCount } = recording;
   const facing = Math.sign(determinant(view)) || 1;
@@ -45,18 +65,7 @@ export function steppedPaper(recording: Recording): SteppedPaper {
 
   /** A recording-frame point as he sees it, on the table. */
   const seen = (x: number, y: number): [number, number] => apply(view, [x, y]);
-
-  // The paper's centre at the start, so the camera's target is the middle of the paper.
   const first = play.frame(0);
-  const box = { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity };
-  for (let i = 0; i < vertexCount; i++) {
-    const [sx, sy] = seen(first[i * 3], first[i * 3 + 1]);
-    box.minX = Math.min(box.minX, sx);
-    box.maxX = Math.max(box.maxX, sx);
-    box.minY = Math.min(box.minY, sy);
-    box.maxY = Math.max(box.maxY, sy);
-  }
-  const centre = { x: (box.minX + box.maxX) / 2, y: (box.minY + box.maxY) / 2 };
 
   // How far the paper reaches from that centre at any moment of the Step.
   const extent = { x: 0, z: 0 };

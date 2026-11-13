@@ -25,11 +25,19 @@
       <div id="stage">
         <canvas id="paper" aria-label="Paper"></canvas>
       </div>
+      <!-- The Model player: which Model and Step, and the Step's text. -->
+      <div id="step">
+        <p id="step-title"></p>
+        <p id="step-text"></p>
+      </div>
       <div id="controls">
         <!-- Tilts the view to show the layers, and back. A camera move only. -->
         <button id="tilt" type="button" aria-pressed="false">Tilt</button>
-        <!-- Temporary (ticket 04): plays the one recorded Step. Ticket 07's
-             Model player replaces it. -->
+        <!-- Takes back the last Fold. -->
+        <button id="undo" type="button">Undo</button>
+        <!-- Temporary (ticket 07): makes the Step's next Fold for him, until
+             his finger does (ticket 05). Once the Model is finished it
+             starts it again. -->
         <button id="fold" type="button">Fold</button>
       </div>
       <p id="stats" hidden></p>

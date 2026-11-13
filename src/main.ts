@@ -1,43 +1,42 @@
-// FoldLab: the paper on his iPad. For now (ticket 04) one recorded Step is
-// drawn as real layered paper; two fingers on the background move the view
-// and a button tilts it to show the layers. Folding gestures come with
-// ticket 05, the Model player (which chooses the Step and plays its
-// Recording) with ticket 07. The house button stays in index.html (suite
-// rule 5).
+// FoldLab: the paper on his iPad. The Model player (player-page.ts) walks a
+// Model's Steps and chooses the paper to draw; two fingers on the background
+// move the view and a button tilts it to show the layers. Folding gestures
+// come with ticket 05. The house button stays in index.html (suite rule 5).
 //
-// This page carries no physics and no engine: a Step's motion was recorded
-// once on the computer (src/motion/record.ts) and is only played back here.
+// This page carries no physics and no engine: every Fold of a Model was
+// replayed and recorded once on the computer (src/model/build.ts) and is
+// only played back here.
 
 import "./style.css";
-import cupStep1 from "./recordings/cup-1.json";
-import type { Recording } from "./motion/recording";
+import { openModel } from "./library/library";
+import { playerPage } from "./player-page";
 import { clamp, FLAT, fitting, pinched, pinchOf, TILTED, viewOf, type Orbit, type Touch } from "./view/camera";
-import { steppedPaper } from "./view/shape";
+import { modelPapers } from "./view/model-papers";
 import { PaperView } from "./view/view";
 
 const stage = document.querySelector<HTMLElement>("#stage")!;
 const canvas = document.querySelector<HTMLCanvasElement>("#paper")!;
 const tiltButton = document.querySelector<HTMLButtonElement>("#tilt")!;
-const foldButton = document.querySelector<HTMLButtonElement>("#fold")!;
 const readout = document.querySelector<HTMLElement>("#stats")!;
 
 // --- The paper and the view ------------------------------------------------
 
-// The fixture: the cup's first Step. Ticket 07's Model player replaces this
-// with the Model's own Steps and Recordings.
-const paper = steppedPaper(cupStep1 as Recording);
-const { orbit: home, limits } = fitting(paper.extent);
+// The Library is one Model for now: the cup. The camera is fitted once to
+// everywhere its paper goes.
+const model = await openModel("cup");
+const papers = modelPapers(model);
+const { orbit: home, limits } = fitting(papers.extent);
 
 const view = new PaperView(canvas);
+view.colours(model.paper.front, model.paper.back);
 let orbit: Orbit = home;
-let progress = 0;
 let tilted = false;
 
 const params = new URLSearchParams(location.search);
 const showStats = params.has("stats");
 
 function draw() {
-  view.show(paper.at(progress));
+  view.show(player.paper.at(player.progress));
   view.look(viewOf(orbit));
   view.render();
   if (showStats) {
@@ -128,34 +127,22 @@ const lift = (e: PointerEvent) => {
 canvas.addEventListener("pointerup", lift);
 canvas.addEventListener("pointercancel", lift);
 
-// --- Temporary: play the Step's Recording ----------------------------------
-// Ticket 07's Model player replaces this button; folding gestures (ticket 05)
-// will drive the Recording from his finger instead.
+// --- The Model player: Steps, Undo, saved progress -------------------------
+// Debug only: `?step=3` opens at that Step and saves nothing during the visit.
 
-let folded = false;
-function setFolded(next: boolean, ms = 1100) {
-  folded = next;
-  foldButton.textContent = folded ? "Unfold" : "Fold";
-  const from = progress;
-  const to = folded ? 1 : 0;
-  if (ms <= 0) {
-    progress = to;
-    return;
-  }
-  animate("fold", ms * Math.abs(to - from), (k) => (progress = from + (to - from) * k));
-}
-foldButton.addEventListener("click", () => setFolded(!folded));
+const openStep = Number(params.get("step"));
+const player = playerPage(model, papers, {
+  animate,
+  redraw: draw,
+  openAt: openStep >= 1 ? { step: openStep - 1, finished: false } : undefined,
+});
 
 // --- Start ------------------------------------------------------------------
 // Debug only: `?p=0.5&tilt&zoom=1.5&turn=30&stats` opens the page at a given
 // progress and view, so the drawing can be checked without a finger.
 
 const p = Number(params.get("p"));
-if (p > 0) {
-  progress = Math.min(1, p);
-  folded = progress >= 1;
-  foldButton.textContent = folded ? "Unfold" : "Fold";
-}
+if (p > 0) player.progress = Math.min(1, p);
 if (params.has("tilt")) setTilted(true, 0);
 orbit = clamp(
   {
