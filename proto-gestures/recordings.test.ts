@@ -21,8 +21,8 @@ describe("the committed Recordings", { timeout: 120000 }, () => {
     // Written by the serializer, not by hand.
     expect(serializeRecording(committed)).toBe(text);
 
-    const { before, after } = RECORDED_STEPS[name]();
-    const fresh = record(before, after);
+    const { before, after, lift } = RECORDED_STEPS[name]();
+    const fresh = record(before, after, lift);
     const { positions: freshPositions, view: freshView, ...freshRest } = fresh;
     const { positions, view, ...rest } = committed;
     expect(rest).toEqual(freshRest);
@@ -71,6 +71,7 @@ describe("the prototype page", () => {
   it("plays the Recordings", () => {
     expect(names).toContain("motion/playback.ts");
     expect(names).toContain("recordings/inside-reverse.json");
+    expect(names).toContain("recordings/squash.json");
   });
 
   it("carries no physics: solve.ts, hinge.ts, mesh.ts, motion.ts and record.ts are never imported", () => {

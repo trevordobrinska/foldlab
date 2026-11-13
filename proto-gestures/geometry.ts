@@ -1,15 +1,16 @@
 // 3D paper for the three prototype Folds. Pure and DOM-free:
 // `model(type, progress)` returns the paper's faces and lines at a given
 // progress, `anchor(type, progress)` the point the finger holds, and
-// `VIEWS` the fixed camera for each Fold. The squash and sink are canned:
-// vertices are computed from progress by rotating about hinge lines. The
-// inside reverse is real paper from the engine and the physics (scene.ts;
-// ticket 10). World units: the paper is about one unit across, lying on
-// y = 0 with y up; the camera looks from +z and above.
+// `VIEWS` the fixed camera for each Fold. The sink is canned: vertices are
+// computed from progress by rotating about hinge lines. The squash and the
+// inside reverse are real paper from the engine and the physics, recorded
+// once and played back (scene.ts; tickets 10 and 11). World units: the paper
+// is about one unit across, lying on y = 0 with y up; the camera looks from
+// +z and above.
 
 import type { FoldType } from "./folds";
 import type { View } from "./frame";
-import { insideReverseAnchor, insideReverseModel } from "./scene";
+import { insideReverseFold, squashFold } from "./scene";
 
 export interface V3 {
   x: number;
@@ -85,10 +86,6 @@ function face(points: V3[], outside: V3, xray = false): Face {
   return xray ? { points: wound, xray } : { points: wound };
 }
 
-function outline(points: V3[], style: Segment["style"] = "edge"): Segment[] {
-  return points.map((from, i) => ({ from, to: points[(i + 1) % points.length], style }));
-}
-
 const seg = (from: V3, to: V3, style: Segment["style"] = "edge"): Segment => ({ from, to, style });
 
 /** Two paper layers lying together are parted by this much so neither
@@ -103,9 +100,9 @@ export function model(type: FoldType, progress: number): FoldModel {
   const p = clamp01(progress);
   switch (type) {
     case "squash":
-      return squash(p);
+      return squashFold.model(p);
     case "insideReverse":
-      return insideReverseModel(p);
+      return insideReverseFold.model(p);
     case "sink":
       return sink(p);
   }
@@ -117,77 +114,25 @@ export function anchor(type: FoldType, progress: number): V3 {
   const p = clamp01(progress);
   switch (type) {
     case "squash":
-      return squashAnchor(p);
+      return squashFold.anchor(p);
     case "insideReverse":
-      return insideReverseAnchor(p);
+      return insideReverseFold.anchor(p);
     case "sink":
       return sinkApex(p);
   }
 }
 
 export const VIEWS: Record<FoldType, View> = {
-  // From the front right and above, so the standing flap is seen as a
-  // triangle rather than edge-on, and the base reads as lying flat.
-  squash: { position: v(0.9, 1.35, 1.65), target: v(0, 0.16, 0.05), fov: 32 },
+  // From the front right and above: the flap stands on its hinge line, which
+  // runs toward him, so it is seen as a triangle rather than edge-on, its tip
+  // comes straight down the screen, and the base reads as lying flat.
+  squash: { position: v(0.4, 0.95, 1.95), target: v(-0.22, 0.25, 0), fov: 34 },
   // From beyond where the tip lands, and above, so its travel in between the
   // layers comes down the screen and the head it makes across the edge is in view.
   insideReverse: { position: v(0.35, 1.45, 1.95), target: v(0.3, 0, 0), fov: 38 },
   // Looking down into the closed point, so the dent reads as it forms.
   sink: { position: v(0.85, 1.3, 1.6), target: v(0, 0.34, 0), fov: 34 },
 };
-
-// ---------------------------------------------------------------------------
-// Squash: a flat base with a two-layer flap standing up on its centre line.
-// Each layer is a triangle hinged to the base along the centre line; pressing
-// the top down opens the layers apart, like a book standing on its spine,
-// until they lie flat as a kite showing the paper's inside.
-
-const SQ = {
-  base: [v(0, 0, -0.56), v(0.52, 0, 0.06), v(0, 0, 0.6), v(-0.52, 0, 0.06)],
-  hinge0: v(0, LAYER, -0.14),
-  hinge1: v(0, LAYER, 0.42),
-  /** Height of the standing flap, and the z of its apex on the hinge line. */
-  height: 0.42,
-  apexZ: 0.03,
-  /** The two layers stand slightly parted, so they read as two. */
-  part: 0.006,
-};
-
-function squashLayer(p: number, side: 1 | -1): V3[] {
-  const theta = (p * Math.PI) / 2;
-  // The layer's outside normal, rotated with it: +x at the start, -y flat.
-  const out = v(side * Math.cos(theta), -Math.sin(theta), 0);
-  const offset = add(scale(out, SQ.part * (1 - p) * 0.5), v(0, LAYER * (1 - p), 0));
-  const apex = v(side * SQ.height * Math.sin(theta), LAYER + SQ.height * Math.cos(theta), SQ.apexZ);
-  return [SQ.hinge0, apex, SQ.hinge1].map((q) => add(q, offset));
-}
-
-function squash(p: number): FoldModel {
-  const right = squashLayer(p, 1);
-  const left = squashLayer(p, -1);
-  const theta = (p * Math.PI) / 2;
-  return {
-    faces: [
-      face(SQ.base, v(0, 1, 0)),
-      face(right, v(Math.cos(theta), -Math.sin(theta), 0)),
-      face(left, v(-Math.cos(theta), -Math.sin(theta), 0)),
-    ],
-    lines: [
-      ...outline(SQ.base),
-      seg(SQ.base[0], SQ.base[2]),
-      seg(right[0], right[2]), // the hinge: the kite's centre crease once flat
-      seg(right[0], right[1]),
-      seg(right[1], right[2]),
-      seg(left[0], left[1]),
-      seg(left[1], left[2]),
-    ],
-  };
-}
-
-function squashAnchor(p: number): V3 {
-  const theta = (p * Math.PI) / 2;
-  return v(0, LAYER + SQ.height * Math.cos(theta), SQ.apexZ);
-}
 
 // ---------------------------------------------------------------------------
 // Closed sink: the closed point of a waterbomb-like base, opened out a little

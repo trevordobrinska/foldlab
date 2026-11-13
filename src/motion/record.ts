@@ -21,26 +21,37 @@
 // finished Paper, exactly as the mesh lays them out: the engine stays the
 // source of truth for both ends. This runs on the computer, never on the iPad.
 
-import type { Paper } from "../engine/paper";
+import type { Lift, Paper } from "../engine/paper";
 import { buildMesh, type Mesh } from "./mesh";
 import { MIN_FRAMES, RECORDING_VERSION, roundCoordinate, type Recording } from "./recording";
-import { initialState, relax, tuning } from "./solve";
+import { angleAt, initialState, relax, tuning } from "./solve";
 import { length, sub, type V3 } from "./vec3";
 
 /** Snapshots over which the hinges are driven from their start angles to their end angles: one per solver step on average. */
 const DRIVEN_FRAMES = Math.round(1 / tuning.step);
-/** Snapshots at the end over which the paper catches up and is pressed flat. */
+/**
+ * Snapshots at the end over which the paper catches up and is pressed flat.
+ * A rigid Fold (a lifted flap) takes twice as many, at the driven snapshots'
+ * expense: its tip hangs at the end of a long chain of stiff faces and creases
+ * and comes to rest more slowly.
+ */
 const CATCH_UP_FRAMES = 4;
 /** Snapshots per Recording: progress 0, the driven snapshots, then the catch-up. */
 export const FRAMES = 1 + DRIVEN_FRAMES + CATCH_UP_FRAMES;
 
-/** The Recording of the Fold that takes `before` to `after`. */
-export function record(before: Paper, after: Paper): Recording {
+/**
+ * The Recording of the Fold that takes `before` to `after`. With a `lift`
+ * (a squash), the Recording starts with that flap already standing, as the
+ * diagram draws it, and ends at `after` like any other.
+ */
+export function record(before: Paper, after: Paper, lift?: Lift): Recording {
   if (FRAMES < MIN_FRAMES) throw new Error(`a Recording needs at least ${MIN_FRAMES} snapshots, not ${FRAMES}`);
-  const mesh = buildMesh(before, after);
+  const mesh = buildMesh(before, after, lift);
+  const catchUp = mesh.rigid ? 2 * CATCH_UP_FRAMES : CATCH_UP_FRAMES;
+  const driven = FRAMES - 1 - catchUp;
 
-  const evenly = Array.from({ length: DRIVEN_FRAMES }, (_, k) => (k + 1) / DRIVEN_FRAMES);
-  const frames = sweep(mesh, byTravel(mesh, sweep(mesh, evenly), evenly));
+  const evenly = Array.from({ length: driven }, (_, k) => (k + 1) / driven);
+  const frames = sweep(mesh, byTravel(mesh, sweep(mesh, evenly, catchUp), evenly), catchUp);
 
   const positions: number[] = [];
   const keep = (frame: V3[]) => frame.forEach((p) => positions.push(roundCoordinate(p[0]), roundCoordinate(p[1]), roundCoordinate(p[2])));
@@ -65,12 +76,12 @@ export function record(before: Paper, after: Paper): Recording {
  * One forward run of the solver from the start: the paper after the hinges
  * have been driven to each of `targets` (fractions of the way from their
  * start to their end angles, increasing, the last 1), stepping no further
- * than the solver's step at a time, then after each of the CATCH_UP_FRAMES
- * shares of settling at the end.
+ * than the solver's step at a time, then after each of `catchUp` shares of
+ * settling at the end.
  */
-function sweep(mesh: Mesh, targets: number[]): V3[][] {
+function sweep(mesh: Mesh, targets: number[], catchUp: number): V3[][] {
   const state = initialState(mesh);
-  const angles = (p: number) => (hinge: (typeof mesh.hinges)[number]) => hinge.start + (hinge.end - hinge.start) * p;
+  const angles = (p: number) => (hinge: (typeof mesh.hinges)[number]) => angleAt(hinge, p);
   const out: V3[][] = [];
   let progress = 0;
   for (const wanted of targets) {
@@ -80,7 +91,7 @@ function sweep(mesh: Mesh, targets: number[]): V3[][] {
     }
     out.push(state.positions.map((p) => [...p] as V3));
   }
-  for (let k = 0; k < CATCH_UP_FRAMES; k++) {
+  for (let k = 0; k < catchUp; k++) {
     relax(mesh, state, angles(1), Math.round(tuning.settlePasses / CATCH_UP_FRAMES), true);
     out.push(state.positions.map((p) => [...p] as V3));
   }

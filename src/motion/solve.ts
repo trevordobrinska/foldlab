@@ -44,6 +44,10 @@ export const tuning = {
   settlePasses: 400,
   /** Passes between fresh searches for touching vertices and faces. */
   contactRefresh: 20,
+  /** Whether touching layers are kept apart at all (off only to see what the contacts do). */
+  contacts: true,
+  /** Whether a rigid Fold's faces (mesh.rigid) are kept stiff throughout (off only to see what that does). */
+  rigidFaces: true,
 };
 
 const turnsInsideOut = (h: Hinge) => h.driven && Math.abs(h.start) > 1 && Math.abs(h.end) > 1;
@@ -70,6 +74,9 @@ export interface State {
 export function initialState(mesh: Mesh): State {
   return { positions: mesh.start.map((p) => [...p] as V3), angles: mesh.hinges.map((h) => h.start) };
 }
+
+/** The angle a hinge is driven to at progress p: along its own path if it has one, else straight from start to end. */
+export const angleAt = (hinge: Hinge, p: number): number => (hinge.path ? hinge.path(p) : hinge.start + (hinge.end - hinge.start) * p);
 
 /** Unwrap a freshly measured angle to the turn nearest the last one. */
 function unwrap(measured: number, last: number): number {
@@ -124,9 +131,10 @@ export function relax(
   const { positions } = state;
   const count = positions.length;
   const w = mesh.pinned.map((pinned) => (pinned ? 0 : 1));
-  let contacts = findContacts(mesh, positions);
+  const touching = () => (tuning.contacts ? findContacts(mesh, positions) : []);
+  let contacts = touching();
   const lambda = mesh.hinges.map(() => 0);
-  const compliance = mesh.hinges.map((h) => complianceOf(h, pressed));
+  const compliance = mesh.hinges.map((h) => complianceOf(h, pressed || (mesh.rigid && tuning.rigidFaces)));
 
   // Moves asked of each vertex in the current sub-pass, and how many constraints asked.
   const delta: V3[] = positions.map(() => [0, 0, 0]);
@@ -196,7 +204,7 @@ export function relax(
   };
 
   for (let pass = 0; pass < passes; pass++) {
-    if (pass > 0 && pass % tuning.contactRefresh === 0) contacts = findContacts(mesh, positions);
+    if (pass > 0 && pass % tuning.contactRefresh === 0) contacts = touching();
     mesh.hinges.forEach(hinge);
     apply();
     for (const c of contacts) contact(c);

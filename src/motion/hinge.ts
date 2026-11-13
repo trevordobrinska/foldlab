@@ -17,6 +17,12 @@ export interface Hinge {
   end: number;
   /** True for a crease this Fold makes or turns; false for one from an earlier Step, which holds. */
   driven: boolean;
+  /**
+   * The angle a driven crease is driven to at progress p (0..1), when it is
+   * not simply `start + (end - start) * p`: a lifted flap's creases follow
+   * the rigid path of the flap pressed flat (mesh.ts).
+   */
+  path?: (p: number) => number;
   /** The shared edge's length on the flat paper. */
   restLength: number;
   /** For a crease: the Paper edge it is part of. */

@@ -1,3 +1,8 @@
+import { makeVerticesEdges } from "rabbit-ear/graph/make/verticesEdges.js";
+import { makeVerticesVertices } from "rabbit-ear/graph/make/verticesVertices.js";
+import { makeVerticesCoordsFlatFolded } from "rabbit-ear/graph/vertices/folded.js";
+import { solveFaceOrders } from "rabbit-ear/layer/solve.js";
+import { verticesFlatFoldabilityKawasaki, verticesFlatFoldabilityMaekawa } from "rabbit-ear/singleVertex/flatFoldable.js";
 import { describe, expect, it } from "vitest";
 import { contains } from "./geometry";
 import {
@@ -7,6 +12,7 @@ import {
   newPaper,
   rotate,
   seenFaces,
+  squash,
   turnOver,
   type FoldResult,
   type Paper,
@@ -375,6 +381,149 @@ describe("inside reverse", () => {
     const paper = point();
     const before = JSON.stringify(paper);
     insideReverse(paper, { line: across, tip });
+    expect(JSON.stringify(paper)).toBe(before);
+  });
+});
+
+// Checked against origami itself, not by eye: every vertex of the crease
+// pattern is flat-foldable (Maekawa, Kawasaki), and Rabbit Ear's layer
+// solver, given only the folded form, finds the engine's layer order.
+function expectFlatFoldable(paper: Paper) {
+  const { faceOrders: _orders, ...graph } = paper.graph;
+  // Rabbit Ear reads the two vertex arrays side by side, so both must be in the same (sorted) order.
+  const vertices_vertices = makeVerticesVertices({ vertices_coords: graph.vertices_coords, edges_vertices: graph.edges_vertices });
+  const vertices_edges = makeVerticesEdges({ edges_vertices: graph.edges_vertices, vertices_vertices });
+  const sorted = { ...graph, vertices_vertices, vertices_edges };
+  expect(verticesFlatFoldabilityMaekawa(sorted)).toEqual(graph.vertices_coords.map(() => 0));
+  verticesFlatFoldabilityKawasaki(sorted).forEach((deviation) => expect(Math.abs(deviation)).toBeLessThan(1e-9));
+}
+
+function expectRabbitEarAgrees(paper: Paper) {
+  const { faceOrders, ...graph } = paper.graph;
+  const vertices_coords = makeVerticesCoordsFlatFolded(paper.graph, [paper.rootFace]);
+  const solved = solveFaceOrders({ ...graph, vertices_coords });
+  expect(solved.branches ?? []).toHaveLength(0);
+  const ours = new Map(faceOrders.map(([f, g, s]) => [`${f} ${g}`, s]));
+  const theirs = (solved.orders ?? []) as [number, number, number][];
+  expect(theirs).toHaveLength(faceOrders.length);
+  for (const [f, g, s] of theirs) {
+    expect(ours.get(`${f} ${g}`) ?? ours.get(`${g} ${f}`), `faces ${f} and ${g}`).toBe(s);
+  }
+}
+
+describe("squash", () => {
+  const diagonal = { origin: [0, 0] as Point, vector: [1, 1] as Point };
+  /** The line from the triangle's right-angle corner (0, 1) to the paper's centre: the hinge of the top flap. */
+  const hinge = { origin: [0, 1] as Point, vector: [1, -1] as Point };
+  /** A square folded in half on its diagonal, then the triangle folded in half: four layers on (0,0),(0,1),(0.5,0.5). */
+  const halved = () => {
+    const triangle = folded(fold(newPaper(), { line: diagonal, flap: [0.9, 0.1], assignment: "V" }));
+    return folded(fold(triangle, { line: hinge, flap: [0.9, 0.9], assignment: "V", layers: "all" }));
+  };
+  const near = (a: Point, b: Point) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 1e-9;
+  const angleBetween = (paper: Paper, from: Point, to: Point) => {
+    const { graph } = paper;
+    const e = graph.edges_vertices.findIndex(([u, v]) => {
+      const a = graph.vertices_coords[u];
+      const b = graph.vertices_coords[v];
+      return (near(a, from) && near(b, to)) || (near(a, to) && near(b, from));
+    });
+    expect(e, `edge ${from} to ${to}`).toBeGreaterThanOrEqual(0);
+    return graph.edges_foldAngle[e];
+  };
+
+  const base: Point[] = [[0, 0], [0, 1], [0.5, 0.5]];
+  const nearHalf: Point[] = [[0, 0.5], [0, 1], [0.5, 0.5]];
+  const farHalf: Point[] = [[0, 1], [0.5, 0.5], [0.5, 1]];
+
+  it("the classic: the top flap of the halved triangle becomes a square on the hinge line", () => {
+    const paper = folded(squash(halved(), { line: hinge, flap: [0.2, 0.6] }));
+    // The square [0, 0.5] × [0.5, 1], symmetric about the hinge: half over the base, half beyond it.
+    expect(stack(paper)).toEqual([
+      { shape: shape(base), front: true },
+      { shape: shape(farHalf), front: true },
+      { shape: shape(base), front: false },
+      { shape: shape(farHalf), front: false },
+      { shape: shape(nearHalf), front: true },
+      { shape: shape(nearHalf), front: false },
+    ]);
+  });
+
+  it("the classic's crease pattern: the midlines fold, the spine and the outer hinge open", () => {
+    const paper = folded(squash(halved(), { line: hinge, flap: [0.2, 0.6] }));
+    expect(angleBetween(paper, [0.5, 0.5], [0.5, 1])).toBe(180);
+    expect(angleBetween(paper, [0.5, 0.5], [1, 0.5])).toBe(180);
+    expect(angleBetween(paper, [0.5, 0.5], [1, 1])).toBe(0);
+    expect(angleBetween(paper, [0.5, 0.5], [0, 1])).toBe(0);
+    expect(angleBetween(paper, [0.5, 0.5], [1, 0])).toBe(-180);
+    expect(angleBetween(paper, [0, 0], [0.5, 0.5])).toBe(180);
+    expect(creases(paper).sort().join("")).toBe("FFMVVV");
+  });
+
+  it("the classic is flat-foldable at every vertex, and Rabbit Ear agrees with its layer order", () => {
+    const paper = folded(squash(halved(), { line: hinge, flap: [0.2, 0.6] }));
+    expectFlatFoldable(paper);
+    expectRabbitEarAgrees(paper);
+  });
+
+  it("tells the recorder which flap is lifted first, and about which line", () => {
+    const result = squash(halved(), { line: hinge, flap: [0.2, 0.6] });
+    expect(result.ok && result.lift).toEqual({ faces: expect.arrayContaining([0, 1]), line: hinge });
+  });
+
+  // Squashing the back flap too makes the preliminary base without a collapse,
+  // and squashing one of its flaps gives the known kite. Turned over, the Paper
+  // is seen mirrored, so the hinge now runs from (0.5, 1) to (0, 0.5).
+  const mirrored = { origin: [0.5, 1] as Point, vector: [-1, -1] as Point };
+  const preliminary = () => {
+    const front = folded(squash(halved(), { line: hinge, flap: [0.2, 0.6] }));
+    return folded(squash(turnOver(front), { line: mirrored, flap: [0.3, 0.6] }));
+  };
+
+  it("squashing the back flap as well gives the preliminary base: eight triangles, four on each side", () => {
+    const paper = preliminary();
+    const faces = seenFaces(paper);
+    expect(faces).toHaveLength(8);
+    const nearSide = shape([[0, 0.5], [0.5, 1], [0.5, 0.5]]).join();
+    const farSide = shape([[0, 0.5], [0.5, 1], [0, 1]]).join();
+    expect(faces.filter((f) => shape(f.polygon).join() === nearSide)).toHaveLength(4);
+    expect(faces.filter((f) => shape(f.polygon).join() === farSide)).toHaveLength(4);
+    expect(creases(paper).sort().join("")).toBe("FFMMVVVV");
+    expectFlatFoldable(paper);
+    expectRabbitEarAgrees(paper);
+  });
+
+  it("squashing one flap of the preliminary base gives the known kite", () => {
+    const paper = folded(squash(preliminary(), { line: mirrored, flap: [0.3, 0.6] }));
+    // The flap's spine (length 1/2) lands on the centre line BA at E'; its creases from the closed point B
+    // (at 22.5° to the centre line) meet the open edges at P and P', 1/√2 up them: the kite B, P, A, P'.
+    const k = Math.SQRT1_2;
+    const B: Point = [0, 0.5];
+    const A: Point = [0.5, 1];
+    const P: Point = [0.5, k];
+    const P2: Point = [k - 0.5, 1];
+    const E: Point = [k / 2, 0.5 + k / 2];
+    const kite = seenFaces(paper).filter((f) => f.polygon.some((p) => near(p, P) || near(p, P2)));
+    const sorted = (shapes: Point[][]) => shapes.map((s) => JSON.stringify(shape(s))).sort();
+    expect(sorted(kite.map((f) => f.polygon))).toEqual(sorted([[B, P, A], [B, E, P], [B, A, P2], [B, E, P2]]));
+    // Its two halves lie on top of the base, each a tip folded onto its own half.
+    expect(kite.map((f) => f.layer).sort()).toEqual([2, 3, 4, 5]);
+    expectFlatFoldable(paper);
+    expectRabbitEarAgrees(paper);
+  });
+
+  it("refuses when there is no two-layer flap under his finger", () => {
+    expect(squash(newPaper(), { line: hinge, flap: [0.2, 0.6] })).toEqual({ ok: false, refusal: "no-flap" });
+  });
+
+  it("refuses when the flap is not hinged on the line", () => {
+    expect(squash(halved(), { line: vertical(0.25), flap: [0.2, 0.6] })).toEqual({ ok: false, refusal: "misses-flap" });
+  });
+
+  it("does not change the Paper it was given", () => {
+    const paper = halved();
+    const before = JSON.stringify(paper);
+    squash(paper, { line: hinge, flap: [0.2, 0.6] });
     expect(JSON.stringify(paper)).toBe(before);
   });
 });

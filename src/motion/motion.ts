@@ -13,7 +13,7 @@
 
 import type { Paper } from "../engine/paper";
 import { buildMesh, type Mesh } from "./mesh";
-import { initialState, relax, tuning, type State } from "./solve";
+import { angleAt, initialState, relax, tuning, type State } from "./solve";
 import type { V3 } from "./vec3";
 
 export { dihedral, type Hinge } from "./hinge";
@@ -32,7 +32,7 @@ export function motionOf(before: Paper, after: Paper): Motion {
   /** True when the paper has been brought to rest at the current progress (an end). */
   let settled = true;
 
-  const target = (p: number) => (hinge: Mesh["hinges"][number]) => hinge.start + (hinge.end - hinge.start) * p;
+  const target = (p: number) => (hinge: Mesh["hinges"][number]) => angleAt(hinge, p);
 
   return {
     mesh,

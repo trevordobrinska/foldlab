@@ -4,16 +4,23 @@
 // made from them (recordings/*.json) and so carries neither the engine nor
 // the physics.
 
-import { fold, insideReverse, newPaper, rotate, type FoldResult, type Paper } from "../src/engine/paper";
+import { fold, insideReverse, newPaper, rotate, squash, type FoldResult, type Lift, type Paper } from "../src/engine/paper";
 
 export interface RecordedStep {
   before: Paper;
   after: Paper;
+  /** For a squash: the flap the hand lifts to stand first, where the Recording starts. */
+  lift?: Lift;
 }
 
 function folded(result: FoldResult): Paper {
   if (!result.ok) throw new Error(`refused: ${result.refusal}`);
   return result.paper;
+}
+
+function lifted(result: FoldResult): Lift {
+  if (!result.ok || !result.lift) throw new Error("not a Fold that lifts a flap");
+  return result.lift;
 }
 
 /**
@@ -29,7 +36,24 @@ export function insideReverseStep(): RecordedStep {
   return { before, after };
 }
 
+/**
+ * The classic squash: a square folded in half on its diagonal, the triangle
+ * folded in half again (earlier Steps), then the top flap squashed into a
+ * square on its hinge line; then turned on the table (a Step, not a Fold)
+ * so the hinge line runs down the screen toward him, with the flap's tip
+ * landing at its near end: the standing tip then comes straight down the
+ * screen, the same push as the closed sink, and the flap spreads left and right.
+ */
+export function squashStep(): RecordedStep {
+  const hinge = { origin: [0, 1] as [number, number], vector: [1, -1] as [number, number] };
+  const triangle = folded(fold(newPaper(), { line: { origin: [0, 0], vector: [1, 1] }, flap: [0.9, 0.1], assignment: "V" }));
+  const before = folded(fold(triangle, { line: hinge, flap: [0.9, 0.9], assignment: "V", layers: "all" }));
+  const result = squash(before, { line: hinge, flap: [0.2, 0.6] });
+  return { before, after: rotate(folded(result), -45), lift: lifted(result) };
+}
+
 /** Every Recording the page loads: its data file (under proto-gestures/recordings/) and the Step it records. */
 export const RECORDED_STEPS: Record<string, () => RecordedStep> = {
   "inside-reverse": insideReverseStep,
+  squash: squashStep,
 };

@@ -14,8 +14,10 @@ import {
   clipToSide,
   compose,
   contains,
+  cross,
   crossingParameter,
   determinant,
+  EPSILON,
   IDENTITY,
   invert,
   lerp,
@@ -24,6 +26,7 @@ import {
   rotationAbout,
   side,
   signedArea,
+  sub,
   type Affine,
   type Line,
   type Point,
@@ -86,16 +89,45 @@ export interface InsideReverseSpec {
   tip: Point;
 }
 
+/** A squash, described as he sees the Paper. */
+export interface SquashSpec {
+  /**
+   * The line the flap's spine is pressed down onto, in the coordinates he
+   * sees: the line the flap is hinged along, which it then spreads evenly across.
+   */
+  line: Line;
+  /** A point on the flap: the two layers under it nearest him, joined by a folded edge (the spine), open and press flat. */
+  flap: Point;
+}
+
+/**
+ * A flap lifted to stand up before a Fold is pressed, the way diagrams draw
+ * a squash: the faces of the Paper before that stand, and the line (as he
+ * sees it) they turn about, toward him.
+ */
+export interface Lift {
+  faces: number[];
+  line: Line;
+}
+
 /**
  * Why a Fold can't be made:
  * - `no-flap`: there is no paper at `flap` (or it lies on the line); for an
- *   inside reverse, no two-layer point under `tip`.
- * - `misses-flap`: the line doesn't cross the flap, so nothing would hinge.
+ *   inside reverse or a squash, no two-layer point or flap under the finger.
+ * - `misses-flap`: the line doesn't cross the flap, so nothing would hinge;
+ *   for a squash, the flap isn't hinged on the line.
  * - `blocked`: paper that isn't moving lies in the flap's path.
  */
 export type Refusal = "no-flap" | "misses-flap" | "blocked";
 
-export type FoldResult = { ok: true; paper: Paper } | { ok: false; refusal: Refusal };
+export type FoldResult =
+  | {
+      ok: true;
+      paper: Paper;
+      /** For a Fold the hand lifts a flap for first (a squash): that lift, so a recording can start from it. */
+      lift?: Lift;
+    }
+  | { ok: false; refusal: Refusal };
 
 const AREA_EPSILON = 1e-10;
 
@@ -159,16 +191,19 @@ interface Cut {
 }
 
 function cut(paper: Paper, seenLine: Line, seenTouch: Point): Cut | "no-flap" {
+  // Work in the folded frame, where +z is the root face's front.
+  const toFolded = invert(paper.view);
+  const line: Line = { origin: apply(toFolded, seenLine.origin), vector: applyLinear(toFolded, seenLine.vector) };
+  return cutFolded(paper, line, apply(toFolded, seenTouch));
+}
+
+/** `cut` with the line and the touch already in the folded frame. */
+function cutFolded(paper: Paper, line: Line, touch: Point): Cut | "no-flap" {
   const { graph } = paper;
   const folded = foldedCoords(paper);
   const polygons = graph.faces_vertices.map((vertices) => vertices.map((v) => folded[v]));
   const winding = polygons.map((polygon) => Math.sign(signedArea(polygon)));
   const height = heightOrder(graph, winding);
-
-  // Work in the folded frame, where +z is the root face's front.
-  const toFolded = invert(paper.view);
-  const line: Line = { origin: apply(toFolded, seenLine.origin), vector: applyLinear(toFolded, seenLine.vector) };
-  const touch = apply(toFolded, seenTouch);
   const flapSide = side(line, touch);
   if (flapSide === 0) return "no-flap";
 
@@ -244,16 +279,9 @@ export function insideReverse(paper: Paper, spec: InsideReverseSpec): FoldResult
   if (c === "no-flap") return { ok: false, refusal: "no-flap" };
 
   // The point: the two layers nearest him under his finger, joined by a folded edge on the tip's side.
-  const under = facesUnder(c, c.facing);
-  const joined = (a: number, b: number) =>
-    c.edges.faces.some((faces, e) => {
-      const [u, v] = c.graph.edges_vertices[e];
-      const spine = faces.length === 2 && faces.includes(a) && faces.includes(b);
-      return spine && Math.abs(c.graph.edges_foldAngle[e]) === 180 && Math.max(c.vertexSide[u], c.vertexSide[v]) > 0;
-    });
-  const top = under.findIndex((a, i) => i + 1 < under.length && joined(a, under[i + 1]));
-  if (top < 0) return { ok: false, refusal: "no-flap" };
-  const [a, b] = [under[top], under[top + 1]];
+  const pair = twoLayers(c);
+  if (!pair) return { ok: false, refusal: "no-flap" };
+  const [a, b] = pair;
 
   // Each layer's tip and whatever is joined to it on that side, apart from the other layer.
   const sideOf = (f: number) => (c.find(f) !== c.find(a) ? 0 : c.height(f, b) === c.height(a, b) ? 1 : -1);
@@ -269,13 +297,136 @@ export function insideReverse(paper: Paper, spec: InsideReverseSpec): FoldResult
   });
 }
 
+/** The folded edges (a spine) joining faces a and b, with an end on the moving side of the line. */
+function spineBetween(c: Cut, a: number, b: number): number[] {
+  return c.edges.faces.flatMap((faces, e) => {
+    const [u, v] = c.graph.edges_vertices[e];
+    const shared = faces.length === 2 && faces.includes(a) && faces.includes(b);
+    const folded = Math.abs(c.graph.edges_foldAngle[e]) === 180 && Math.max(c.vertexSide[u], c.vertexSide[v]) > 0;
+    return shared && folded ? [e] : [];
+  });
+}
+
+/** The two layers nearest him under his finger that a spine joins: [nearer, further], or undefined. */
+function twoLayers(c: Cut): [number, number] | undefined {
+  const under = facesUnder(c, c.facing);
+  const top = under.findIndex((a, i) => i + 1 < under.length && spineBetween(c, a, under[i + 1]).length > 0);
+  return top < 0 ? undefined : [under[top], under[top + 1]];
+}
+
+/**
+ * Squash: a two-layer flap hinged along the line, under his finger, is
+ * lifted to stand, opened at its spine and pressed flat so the spine lies
+ * along the line (toward the hinge) and the two layers spread evenly on
+ * either side of it. Each layer creases along the bisector of its spine
+ * and the line; the outer layer turns over its hinge onto the far side,
+ * the inner one keeps its hinge and folds onto itself.
+ */
+export function squash(paper: Paper, spec: SquashSpec): FoldResult {
+  const c = cut(paper, spec.line, spec.flap);
+  if (c === "no-flap") return { ok: false, refusal: "no-flap" };
+  const pair = twoLayers(c);
+  if (!pair) return { ok: false, refusal: "no-flap" };
+  const [a, b] = pair;
+  const { graph, folded, line, vertexSide } = c;
+  /** The side a faces, away from b: where the opened flap's parts land. */
+  const toward = c.height(a, b) ?? c.facing;
+
+  // The spine's ends: the one on the line is where the creases start, the far one is the tip.
+  const spine = spineBetween(c, a, b);
+  const ends = [...new Set(spine.flatMap((e) => graph.edges_vertices[e]))];
+  const unit = (v: Point): Point => {
+    const len = Math.hypot(v[0], v[1]) || 1;
+    return [v[0] / len, v[1] / len];
+  };
+  const along = unit(line.vector);
+  const away = (v: number) => Math.abs(cross(along, sub(folded[v], line.origin)));
+  const root = ends.find((v) => vertexSide[v] === 0);
+  if (root === undefined) return { ok: false, refusal: "misses-flap" };
+  const tip = ends.reduce((far, v) => (away(v) > away(far) ? v : far));
+
+  // The hinge: the flap's edges lying on the line, shared with paper that stays. The spine lands toward it.
+  const isFlap = (f: number) => f === a || f === b;
+  const hinges = c.edges.faces.flatMap((faces, e) => {
+    const [u, v] = graph.edges_vertices[e];
+    const onLine = vertexSide[u] === 0 && vertexSide[v] === 0;
+    return onLine && faces.length === 2 && faces.some(isFlap) && !faces.every(isFlap) ? [e] : [];
+  });
+  const reach = hinges
+    .flatMap((e) => graph.edges_vertices[e])
+    .reduce((sum, v) => sum + along[0] * (folded[v][0] - folded[root][0]) + along[1] * (folded[v][1] - folded[root][1]), 0);
+  if (hinges.length === 0 || Math.abs(reach) < EPSILON) return { ok: false, refusal: "misses-flap" };
+  const landing: Point = [along[0] * Math.sign(reach), along[1] * Math.sign(reach)];
+  const up = unit(sub(folded[tip], folded[root]));
+  const bisector: Point = [up[0] + landing[0], up[1] + landing[1]];
+  if (Math.hypot(...bisector) < EPSILON) return { ok: false, refusal: "misses-flap" };
+
+  // Lifting the flap: nothing may lie on it.
+  if (blocked(c, graph.faces_vertices.map((_, f) => f === a), () => toward)) return { ok: false, refusal: "blocked" };
+
+  // Pressing: each layer's part beyond the bisector folds over; nothing else may be joined to it there.
+  const m = cutFolded(paper, { origin: folded[root], vector: bisector }, folded[tip]);
+  if (m === "no-flap") return { ok: false, refusal: "misses-flap" };
+  const inFlap = graph.faces_vertices.map((_, f) => isFlap(f) && m.hasPiece[f]);
+  if (!inFlap[a] || !inFlap[b]) return { ok: false, refusal: "misses-flap" };
+  if (graph.faces_vertices.some((_, f) => !isFlap(f) && m.hasPiece[f] && m.find(f) === m.find(a))) {
+    return { ok: false, refusal: "blocked" };
+  }
+  if (blocked(m, inFlap, () => toward)) return { ok: false, refusal: "blocked" };
+
+  // The outer layer's tip folds onto the layer once it has turned over, so its crease sign is read from the turned layer.
+  const result = perform(paper, m, inFlap, (f) => (f === a ? -toward : toward), true, {
+    invertInside: false,
+    opens: spine,
+    turnsOver: { faces: [a], edges: hinges.filter((e) => c.edges.faces[e].includes(a)), toward },
+    above: (i, j, origin, moved) => {
+      type Part = "stays" | "aBase" | "aTip" | "bBase" | "bTip";
+      const part = (f: number): Part =>
+        origin[f] === a ? (moved[f] ? "aTip" : "aBase") : origin[f] === b ? (moved[f] ? "bTip" : "bBase") : "stays";
+      const [pi, pj] = [part(i), part(j)];
+      const ofA = (p: Part) => p === "aBase" || p === "aTip";
+      const ofB = (p: Part) => p === "bBase" || p === "bTip";
+      // The two layers lie on either side of the line and never overlap.
+      if ((ofA(pi) && ofB(pj)) || (ofB(pi) && ofA(pj))) return undefined;
+      if (pi === "stays" && pj === "stays") return c.height(origin[i], origin[j]);
+      // The outer layer lands on the far side on top of whatever lies there, its tip on top of its base.
+      if (ofA(pi) || ofA(pj)) {
+        if (pi === pj) return undefined;
+        const rank = (p: Part) => (p === "stays" ? -1 : p === "aBase" ? 0 : 1);
+        return toward * Math.sign(rank(pi) - rank(pj));
+      }
+      // The inner layer's base stays put; its tip folds onto it, toward where the outer layer was.
+      if (pi === pj) return undefined;
+      if (pi === "stays") return c.height(origin[i], b);
+      if (pj === "stays") return c.height(b, origin[j]);
+      return pi === "bTip" ? toward : -toward;
+    },
+  });
+  return result.ok ? { ...result, lift: { faces: [a, b], line: spec.line } } : result;
+}
+
 interface Landing {
   /** Order after the Fold of two moved faces from different faces before, given their order before. */
-  bothMoved: (before: number, i: number, j: number) => number;
+  bothMoved?: (before: number, i: number, j: number) => number;
   /** Order after of a moved face above (1) or below (-1) a face that stayed, from their faces before. */
-  oneMoved: (moved: number, stayed: number) => number | undefined;
+  oneMoved?: (moved: number, stayed: number) => number | undefined;
+  /**
+   * Instead of the two rules above: the order of any two faces after the Fold
+   * (1 when i lies above j along the folded frame's +z), given each face's
+   * face before and whether it is a moved piece; undefined leaves the pair unordered.
+   */
+  above?: (i: number, j: number, origin: number[], moved: boolean[]) => number | undefined;
   /** Turn the creases inside the moving part inside out (an inside reverse). */
   invertInside: boolean;
+  /** Creases (edges before the Fold) this Fold lays open: their angle becomes 0 (a squash opens its spine). */
+  opens?: number[];
+  /**
+   * Faces before the Fold whose part off the moving side turns over too, about
+   * the creases in `turnsOver.edges` (a squash turns its outer layer over its
+   * hinge), each toward `toward`: those creases turn by 180° and no such part
+   * becomes the root.
+   */
+  turnsOver?: { faces: number[]; edges: number[]; toward: number };
 }
 
 /** Crease and move the faces in `inFlap` along the line, each toward `towardOf(f)` (+1 is the folded frame's +z). */
@@ -301,12 +452,24 @@ function perform(
   // A face turning toward its front side makes a valley crease, away a mountain.
   const turn = (f: number) => (moves ? (winding[f] === towardOf(f) ? 180 : -180) : 0);
   const next: FoldGraph = structuredClone(graph);
+  const setAngle = (e: number, angle: number): boolean => {
+    if (Math.abs(angle) > 180) return false;
+    next.edges_foldAngle[e] = angle;
+    next.edges_assignment[e] = assignmentOf(angle);
+    return true;
+  };
   if (moves) {
     for (const e of hingeEdges) {
-      const angle = next.edges_foldAngle[e] + turn(edges.faces[e].find((f) => inFlap[f])!);
-      if (Math.abs(angle) > 180) return { ok: false, refusal: "blocked" };
-      next.edges_foldAngle[e] = angle;
-      next.edges_assignment[e] = assignmentOf(angle);
+      if (!setAngle(e, next.edges_foldAngle[e] + turn(edges.faces[e].find((f) => inFlap[f])!))) {
+        return { ok: false, refusal: "blocked" };
+      }
+    }
+    for (const e of landing.opens ?? []) setAngle(e, 0);
+    // A part turning over about its own hinge is a plain Fold of that part: valley toward its front.
+    for (const e of landing.turnsOver?.edges ?? []) {
+      const f = edges.faces[e].find((g) => landing.turnsOver!.faces.includes(g))!;
+      const over = winding[f] === landing.turnsOver!.toward ? 180 : -180;
+      if (!setAngle(e, next.edges_foldAngle[e] + over)) return { ok: false, refusal: "blocked" };
     }
   }
 
@@ -373,14 +536,18 @@ function perform(
 
   // Keep a face that didn't move as the root, so the Paper stays where he sees it.
   let { rootFace, view } = paper;
-  if (moves && nextInFlap[rootFace]) {
-    rootFace = nextInFlap.findIndex((flap) => !flap);
+  const stays = (f: number) => !nextInFlap[f] && !landing.turnsOver?.faces.includes(origin[f]);
+  /** +1 when the new root's layout has the old folded frame's orientation, -1 when it is mirrored. */
+  let frame = 1;
+  if (moves && !stays(rootFace)) {
+    rootFace = next.faces_vertices.findIndex((_, f) => stays(f));
     const vertices = graph.faces_vertices[origin[rootFace]];
     const placed = affineFromPoints(
       vertices.map((v) => graph.vertices_coords[v]),
       vertices.map((v) => folded[v]),
     );
     view = compose(view, placed);
+    frame = Math.sign(determinant(placed));
   }
 
   // Layer order for every pair of faces that now overlap, worked out in the old
@@ -388,19 +555,22 @@ function perform(
   // against the others is the Fold's own rule (`landing`). A moved piece lies
   // toward where it moved from the rest of its own face.
   const moved = (f: number) => moves && nextInFlap[f];
-  const windingAfter = (f: number) => (moved(f) ? -winding[origin[f]] : winding[origin[f]]);
-  const aboveAfter = (i: number, j: number): number | undefined => {
+  const aboveByRules = (i: number, j: number): number | undefined => {
     if (moved(i) !== moved(j)) {
       const [m, s] = moved(i) ? [i, j] : [j, i];
-      const above = origin[m] === origin[s] ? towardOf(origin[m]) : landing.oneMoved(origin[m], origin[s]);
+      const above = origin[m] === origin[s] ? towardOf(origin[m]) : landing.oneMoved!(origin[m], origin[s]);
       return above === undefined ? undefined : moved(i) ? above : -above;
     }
     if (origin[i] === origin[j]) return undefined;
     const before = height(origin[i], origin[j]);
-    return before === undefined ? undefined : moved(i) ? landing.bothMoved(before, origin[i], origin[j]) : before;
+    return before === undefined ? undefined : moved(i) ? landing.bothMoved!(before, origin[i], origin[j]) : before;
   };
+  const aboveAfter = (i: number, j: number) =>
+    landing.above ? landing.above(i, j, origin, nextInFlap.map((_, f) => moved(f))) : aboveByRules(i, j);
   const nextFolded = makeVerticesCoordsFlatFolded(next, [rootFace]);
   const nextPolygons = next.faces_vertices.map((vertices) => vertices.map((v) => nextFolded[v]));
+  // Each face's winding after, read in the old folded frame like `aboveAfter`.
+  const windingAfter = (f: number) => frame * Math.sign(signedArea(nextPolygons[f]));
   next.faceOrders = [];
   for (let i = 0; i < nextPolygons.length; i++) {
     for (let j = i + 1; j < nextPolygons.length; j++) {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import insideReverse from "../../proto-gestures/recordings/inside-reverse.json";
+import squash from "../../proto-gestures/recordings/squash.json";
 import { playbackOf } from "./playback";
 import { MIN_FRAMES, RECORDING_VERSION, type Recording } from "./recording";
 
@@ -58,8 +59,11 @@ describe("playing a Recording", () => {
   // The whole cost of a finger move, short of the GPU draw: the blend into
   // the mesh's position buffer, then laying it out triangle by triangle the
   // way the page's geometry is (one flat normal per triangle, so no index).
-  it("is fast: a frame of the inside reverse costs under a millisecond", () => {
-    const play = playbackOf(insideReverse as Recording);
+  it.each([
+    ["inside reverse", insideReverse],
+    ["squash", squash],
+  ])("is fast: a frame of the %s costs under a millisecond", (_name, data) => {
+    const play = playbackOf(data as Recording);
     const { triangles } = play.recording;
     const positions = new Float32Array(play.vertexCount * 3);
     const buffer = new Float32Array(triangles.length * 3);

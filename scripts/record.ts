@@ -21,8 +21,8 @@ export interface Recorded {
 export function recordAll(): Recorded[] {
   return Object.entries(RECORDED_STEPS).map(([name, step]) => {
     const started = performance.now();
-    const { before, after } = step();
-    const recording = record(before, after);
+    const { before, after, lift } = step();
+    const recording = record(before, after, lift);
     return { name, recording, json: serializeRecording(recording), seconds: (performance.now() - started) / 1000 };
   });
 }
