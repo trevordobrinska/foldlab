@@ -119,6 +119,8 @@ describe("letting go: does the Fold he made match the Step's", () => {
   it("matches when the corner lands where the Step's Fold lands it, or near enough", () => {
     expect(lands(hold, { x: -0.5, z: 0.5 })).toBe(true);
     expect(lands(hold, { x: -0.42, z: 0.44 })).toBe(true);
+    // Let go a fifth of the paper short of the corner: he has plainly made the Fold.
+    expect(lands(hold, { x: -0.3, z: 0.45 })).toBe(true);
   });
 
   it("misses when the line he folded is well off the Step's", () => {
@@ -126,7 +128,7 @@ describe("letting go: does the Fold he made match the Step's", () => {
     expect(lands(hold, { x: 0.5, z: 0.5 })).toBe(false);
     // Half way: the right direction, but a parallel line far from the Step's.
     expect(lands(hold, { x: 0, z: 0 })).toBe(false);
-    expect(lands(hold, { x: -0.3, z: 0.45 })).toBe(false);
+    expect(lands(hold, { x: -0.2, z: 0.2 })).toBe(false);
   });
 
   it("misses the wrong way and the wrong flap", () => {

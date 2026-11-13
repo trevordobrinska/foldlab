@@ -36,9 +36,9 @@ export interface Hold {
 export const PATH_SAMPLES = 96;
 
 /** A landing counts when it is within this share of the point's own journey from where the Fold lands it... */
-export const LANDING_SHARE = 0.3;
+export const LANDING_SHARE = 0.4;
 /** ...and never further off than this, in paper units (the paper is about one unit across). */
-export const LANDING_REACH = 0.15;
+export const LANDING_REACH = 0.3;
 /** A point that travels less than this in a Fold is not on its flap. */
 const STILL = 0.02;
 /** A finger that moves less than this (CSS pixels) only touched the paper. */
@@ -113,7 +113,7 @@ export function progressUnder(path: Pixel[], finger: Pixel): number {
  * Whether landing the held point at `landing` makes the Step's Fold: the
  * point is on the flap, and it was put down near enough to where the Fold
  * lands it. Forgiving in proportion: within LANDING_SHARE of the point's
- * journey (about 17° of the fold line's direction, or 15% of the journey
+ * journey (about 23° of the fold line's direction, or 20% of the journey
  * in the line's position), and never more than LANDING_REACH.
  */
 export function lands(hold: Hold, landing: TablePoint): boolean {
