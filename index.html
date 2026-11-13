@@ -24,6 +24,8 @@
       <!-- The paper, drawn in 3D. One finger on it folds it; two fingers move the view. -->
       <div id="stage">
         <canvas id="paper" aria-label="Paper"></canvas>
+        <!-- Notation, drawn over the paper: the Step's fold lines and arrows. -->
+        <svg id="notation" aria-hidden="true"></svg>
       </div>
       <!-- The Model player: which Model and Step, and the Step's text. -->
       <div id="step">
@@ -35,10 +37,12 @@
         <button id="tilt" type="button" aria-pressed="false">Tilt</button>
         <!-- Takes back the last Fold. -->
         <button id="undo" type="button">Undo</button>
-        <!-- Temporary (ticket 07): makes the Step's next Fold for him, so a
-             Model can be walked without a finger; ticket 06's "show me"
-             replaces it. Once the Model is finished it starts it again. -->
-        <button id="fold" type="button">Fold</button>
+        <!-- Back to the start of this Step, or of the Step before. -->
+        <button id="step-back" type="button">Step back</button>
+        <!-- Calm help: offered after a few misses; plays the Fold once. -->
+        <button id="show-me" type="button" hidden>Show me</button>
+        <!-- Shown once the Model is finished: back to its first Step. -->
+        <button id="again" type="button" hidden>Fold it again</button>
       </div>
       <p id="stats" hidden></p>
     </main>
