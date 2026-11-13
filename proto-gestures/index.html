@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <title>foldlab: gesture prototype</title>
+    <!-- Throwaway prototype page (ticket 02). Relative paths only (suite
+         rule 1). No manifest and no service worker (suite rule 6). -->
+    <link rel="icon" type="image/png" href="../icon-512.png" />
+  </head>
+  <body class="proto">
+    <!-- The house button: back to the Arcade at the site root (suite rule 5). -->
+    <a id="home-button" href="/" aria-label="Back to the Arcade">
+      <svg viewBox="0 0 48 48" aria-hidden="true">
+        <path d="M8 23 L24 9 L40 23" />
+        <path d="M13 20 V39 H35 V20" />
+        <path d="M21 39 V29 H27 V39" />
+      </svg>
+    </a>
+    <main id="proto">
+      <nav id="tabs" aria-label="Fold type"></nav>
+      <div id="stage">
+        <svg id="paper" viewBox="-8 -8 116 116" aria-label="Paper">
+          <g id="paper-layer"></g>
+          <g id="target-layer"></g>
+        </svg>
+      </div>
+      <p id="prompt"></p>
+      <button id="again" type="button">Again</button>
+    </main>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

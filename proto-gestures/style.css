@@ -1,0 +1,187 @@
+/* Throwaway prototype page. Builds on ../src/style.css for the tokens and
+   the house button. */
+
+:root {
+  --side-a: #e9a65e;
+  --side-a-light: #f3be84;
+  --side-a-dark: #c98541;
+  --side-b: #fbf7ee;
+  --shadow: rgba(43, 37, 64, 0.18);
+}
+
+/* Fill the screen, never scroll or zoom while he is folding. */
+body.proto {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+#proto {
+  box-sizing: border-box;
+  height: 100%;
+  padding: calc(var(--gap) + env(safe-area-inset-top)) calc(var(--gap) + env(safe-area-inset-right))
+    calc(var(--gap) + env(safe-area-inset-bottom)) calc(var(--gap) + env(safe-area-inset-left));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--gap);
+}
+
+/* Three big tabs to the right of the house button. */
+#tabs {
+  display: flex;
+  gap: var(--gap);
+  width: 100%;
+  padding-left: calc(72px + var(--gap));
+  box-sizing: border-box;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+#tabs button,
+#again {
+  font: inherit;
+  font-size: 22px;
+  font-weight: 600;
+  min-height: 72px;
+  padding: 0 28px;
+  border: 3px solid var(--ink);
+  border-radius: 20px;
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: 0 4px 0 var(--ink);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+#tabs button[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--card);
+}
+
+#tabs button:active,
+#again:active {
+  transform: translateY(4px);
+  box-shadow: 0 0 0 var(--ink);
+}
+
+#stage {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+}
+
+#paper {
+  height: 100%;
+  width: 100%;
+  max-height: 100%;
+  max-width: 100%;
+  aspect-ratio: 1;
+  touch-action: none;
+  display: block;
+}
+
+#prompt {
+  margin: 0;
+  font-size: 24px;
+  min-height: 1.4em;
+}
+
+#again {
+  min-width: 180px;
+  opacity: 0.55;
+  transition: opacity 250ms ease-out;
+}
+
+#again.ready {
+  opacity: 1;
+}
+
+/* Paper */
+#paper polygon {
+  stroke: var(--ink);
+  stroke-width: 1.2;
+  stroke-linejoin: round;
+}
+
+#paper .side-a {
+  fill: var(--side-a);
+}
+
+#paper .side-a-light {
+  fill: var(--side-a-light);
+}
+
+#paper .side-a-dark {
+  fill: var(--side-a-dark);
+}
+
+#paper .side-b {
+  fill: var(--side-b);
+}
+
+#paper .shadow {
+  fill: var(--shadow);
+  stroke: none;
+}
+
+#paper line {
+  stroke: var(--ink);
+  stroke-width: 1.2;
+  stroke-linecap: round;
+}
+
+/* Notation: a valley crease is dashed; an x-ray line is dotted. */
+#paper .crease {
+  stroke-dasharray: 3 2.5;
+}
+
+#paper .xray {
+  stroke-dasharray: 1 2;
+  stroke-width: 1;
+}
+
+/* The target: a hollow push arrow and a ring on the point to touch. */
+#target-layer {
+  transition: opacity 150ms ease-out;
+  pointer-events: none;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+#paper .ring {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+  opacity: 0.45;
+}
+
+#paper .arrow {
+  fill: var(--card);
+  stroke: var(--ink);
+  stroke-width: 1.4;
+}
+
+/* After a miss: two gentle pulses, then still. Never loops. */
+#target-layer.pulse {
+  animation: pulse 700ms ease-in-out 2;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.12);
+  }
+}
