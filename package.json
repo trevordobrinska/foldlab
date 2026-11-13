@@ -10,9 +10,11 @@
     "preview": "vite preview",
     "test": "vitest run",
     "record": "node scripts/record.mjs",
-    "library": "node scripts/library.mjs"
+    "library": "node scripts/library.mjs",
+    "import": "node scripts/import.mjs"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^1.8.0",
     "@types/node": "^26.6.6",
     "@types/three": "^0.187.0",
     "typescript": "^7.0.2",

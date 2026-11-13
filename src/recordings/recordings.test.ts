@@ -96,4 +96,14 @@ describe("the page", () => {
     expect(reached.packages).not.toContain("rabbit-ear");
     expect(reached.packages).toContain("three");
   });
+
+  it("carries no Import: the import script, the Claude API and its SDK stay on Dad's computer", () => {
+    expect(names.filter((name) => name.startsWith("import/"))).toEqual([]);
+    expect(names.filter((name) => name.endsWith(".recipe.json"))).toEqual([]);
+    expect([...reached.packages].filter((name) => name.startsWith("@anthropic-ai"))).toEqual([]);
+    // The SDK is a tool of the import script, not something the app depends on.
+    const packageJson = JSON.parse(readFileSync(resolve(here, "../../package.json"), "utf8"));
+    expect(Object.keys(packageJson.dependencies).filter((name) => name.startsWith("@anthropic-ai"))).toEqual([]);
+    expect(Object.keys(packageJson.devDependencies)).toContain("@anthropic-ai/sdk");
+  });
 });

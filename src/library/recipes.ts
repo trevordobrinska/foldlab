@@ -3,11 +3,17 @@
 // and records into src/library/<id>.json (build.ts). Read by that script and
 // by the tests, never by the page.
 //
-// STAND-IN. Nobody writes Models by hand (GLOSSARY, Import): this cup is here
-// only until Import (ticket 08) makes the real one from a Source, and is the
+// A recipe comes from Import (`npm run import`, src/import/), which writes it
+// beside the Model file as src/library/<id>.recipe.json once every Step has
+// replayed. It is kept so the Model file can be rebuilt (new Recordings when
+// the recorder improves) without asking the Claude API again.
+//
+// STAND-IN. Nobody writes Models by hand (GLOSSARY, Import): the cup written
+// out below is here only until Dad runs Import on a cup Source, and is the
 // engine tests' cup sequence (src/engine/paper.test.ts, "the cup, Fold by
-// Fold") with Step text added. Ticket 08 replaces this file's cup with the
-// imported one.
+// Fold") with Step text added. An imported cup.recipe.json takes its place
+// without any change here; `cupRecipe` and the tests in library.test.ts that
+// are written against its four Steps should then be deleted or rewritten.
 
 import type { Line, Point } from "../engine/geometry";
 import type { ModelRecipe } from "../model/model";
@@ -54,5 +60,13 @@ export const cupRecipe: ModelRecipe = {
   ],
 };
 
-/** Every Model file in src/library/, by id. */
-export const RECIPES: Record<string, ModelRecipe> = { cup: cupRecipe };
+/** The recipes Import has written: src/library/<id>.recipe.json, by id. */
+const imported = Object.fromEntries(
+  Object.entries(import.meta.glob<ModelRecipe>("./*.recipe.json", { eager: true, import: "default" })).map(([file, recipe]) => [
+    file.slice("./".length, -".recipe.json".length),
+    recipe,
+  ]),
+);
+
+/** Every Model file in src/library/, by id. An imported recipe replaces a stand-in of the same id. */
+export const RECIPES: Record<string, ModelRecipe> = { cup: cupRecipe, ...imported };
