@@ -1,6 +1,6 @@
 # A real squash, recorded and played back like the inside reverse
 
-Status: ready-for-agent
+Status: resolved
 Type: task
 Blocked by: 10
 
@@ -43,3 +43,5 @@ The sink (next ticket, the same way), other Fold types (a later milestone), view
 - Prototype: `scene.ts` is now one `recordedFold(data)` for both recordings (tip = the paper vertex that travels furthest in 3D); the hand-made squash geometry is gone from `geometry.ts`. The Paper is turned −45° so the hinge line runs down the screen toward him and the tip comes straight down (axis.y 0.967), the same push as the closed sink, which `geometry.test.ts` requires; the price is that the standing flap is seen 13° from edge-on at the start. Camera from the front right, a little lower than before. Tests: 130 passing (suite about 25 s): the ticket 10 set is shared in `src/motion/acceptance.ts`, run on both recordings; `squash.test.ts` adds the standing start, the mirror check, and the opening; Fast covers both recordings; Fresh and the no-physics import-graph check cover `squash.json`.
 - Bundle: `protoGestures-*.js` 619,442 → 705,476 bytes (158.8 → 184.6 kB gzip): the 98 kB recording came in, inlined by Vite.
 - Known limits: the camera compromise above (a side view would show the standing flap better but the push would be diagonal); the squash's two halves differ in height by the layers they lie on (2 gaps, 0.008 of the paper), inherent to the layered model; `rigidPath` knows the symmetric squash's kinematics (one flap, spine landing on its hinge line) and nothing else, so an asymmetric squash would need its own path; the preliminary base's crease pattern comes out with two half-diagonals flat (F), which is what the folded form has, not the diagram's creased-then-collapsed pattern. Dad's iPad check is still to do.
+
+**2026-11-13, Dad:** Checked on the iPad. Looks great. Resolved.
